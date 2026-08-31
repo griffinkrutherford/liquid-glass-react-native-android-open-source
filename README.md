@@ -10,6 +10,93 @@ blur, chromatic dispersion, tint, and Fresnel-style edge optics.
 Older versions receive a static translucent fallback. See [PLAN.md](PLAN.md)
 for the full roadmap.
 
+## React Native installation
+
+The package supports React Native 0.76+ and includes Android autolinking plus
+Fabric codegen. Until the first npm release, install a tagged GitHub version:
+
+```shell
+npm install github:griffinkrutherford/liquid-glass-react-native-android-open-source#v0.1.0
+cd android && ./gradlew app:assembleDebug
+```
+
+Use a custom native build. Expo Go cannot load native libraries; Expo projects
+must use a development build.
+
+Place the background and glass elements inside one `LiquidGlassScene`. Glass
+elements sample non-glass siblings that appear behind them:
+
+```tsx
+import {Image, StyleSheet, Text} from 'react-native';
+import {
+  LiquidGlassScene,
+  LiquidGlassView,
+  isLiquidGlassSupported,
+} from '@griffinkrutherford/liquid-glass-android';
+
+export function GlassScreen() {
+  return (
+    <LiquidGlassScene style={styles.scene}>
+      <Image source={require('./background.jpg')} style={StyleSheet.absoluteFill} />
+      <LiquidGlassView
+        style={styles.card}
+        effect="clear"
+        thickness={12}
+        bevelDepth={28}
+        indexOfRefraction={1.5}
+        refractionStrength={28}
+        tintColor="rgba(220, 242, 255, 0.08)"
+        draggable>
+        <Text style={styles.title}>Physical glass</Text>
+      </LiquidGlassView>
+    </LiquidGlassScene>
+  );
+}
+
+const styles = StyleSheet.create({
+  scene: {flex: 1},
+  card: {
+    position: 'absolute',
+    left: 24,
+    right: 24,
+    top: 220,
+    height: 212,
+    padding: 24,
+  },
+  title: {color: 'white', fontSize: 24},
+});
+```
+
+Supported props include `effect`, `interactive`, `draggable`, `animated`,
+`animationDuration`, `cornerRadius`, `refractionStrength`, `dispersion`,
+`indexOfRefraction`, `bevelDepth`, `thickness`, `blurRadius`, `effectAmount`,
+`tintColor`, `tintAmount`, and `colorScheme`. Dimension props use React Native
+density-independent layout units.
+
+On iOS the exported components render normal `View` fallbacks. On Android 12
+and below they use the library's static translucent fallback; full live AGSL
+refraction requires Android 13 (API 33) or newer. Check
+`isLiquidGlassSupported` when choosing UI fallbacks.
+
+### Automatic dependency updates
+
+Pin production apps to a release tag rather than `main`. After npm publishing,
+install a semver range such as `^0.1.0`, commit the lockfile, and let Dependabot
+open tested update pull requests:
+
+```yaml
+# .github/dependabot.yml in the consuming app
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+```
+
+For GitHub-tag installations, Renovate can update the pinned tag. Avoid a
+floating Git branch because an unreviewed native change could break app builds.
+
 ## Native usage
 
 Place ordinary views and the glass overlay inside a `LiquidGlassScene`:
