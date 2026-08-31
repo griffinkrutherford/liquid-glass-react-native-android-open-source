@@ -18,6 +18,8 @@ class LiquidGlassScene @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
 ) : ViewGroup(context, attrs) {
+    /** Set false when an external layout engine such as React Native Yoga positions children. */
+    var managesChildLayout: Boolean = true
     private var backdrop: Bitmap? = null
     private var backdropCanvas: Canvas? = null
 
@@ -29,9 +31,11 @@ class LiquidGlassScene @JvmOverloads constructor(
         val width = MeasureSpec.getSize(widthMeasureSpec)
         val height = MeasureSpec.getSize(heightMeasureSpec)
         setMeasuredDimension(width, height)
-        for (index in 0 until childCount) {
-            val child = getChildAt(index)
-            measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, 0)
+        if (managesChildLayout) {
+            for (index in 0 until childCount) {
+                val child = getChildAt(index)
+                measureChildWithMargins(child, widthMeasureSpec, 0, heightMeasureSpec, 0)
+            }
         }
     }
 
@@ -45,6 +49,7 @@ class LiquidGlassScene @JvmOverloads constructor(
     override fun checkLayoutParams(params: LayoutParams?): Boolean = params is MarginLayoutParams
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        if (!managesChildLayout) return
         for (index in 0 until childCount) {
             val child = getChildAt(index)
             val params = child.layoutParams as MarginLayoutParams
