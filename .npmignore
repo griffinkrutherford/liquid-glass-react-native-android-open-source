@@ -1,0 +1,5 @@
+**/build/
+android/app/
+liquid-glass-core/src/test/
+sample-android/
+node_modules/

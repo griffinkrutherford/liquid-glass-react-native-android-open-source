@@ -1,0 +1,81 @@
+{
+  "name": "@griffinkrutherford/liquid-glass-android",
+  "version": "0.1.0",
+  "description": "Physical liquid glass views for React Native on Android",
+  "source": "src/index.tsx",
+  "main": "lib/commonjs/index.js",
+  "module": "lib/module/index.js",
+  "types": "lib/typescript/index.d.ts",
+  "react-native": "src/index.tsx",
+  "files": [
+    "android/build.gradle",
+    "android/consumer-rules.pro",
+    "android/gradle.properties",
+    "android/settings.gradle",
+    "android/src",
+    "liquid-glass-core/src/main",
+    "liquid-glass-view/src/main",
+    "src",
+    "lib",
+    "react-native.config.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bob build",
+    "android:bridge-check": "bob build --target codegen && ./gradlew -I gradle/react-native-validation.gradle :liquid-glass-view:compileDebugKotlin",
+    "clean": "bob clean",
+    "typecheck": "tsc --noEmit",
+    "prepare": "bob build"
+  },
+  "keywords": [
+    "react-native",
+    "android",
+    "liquid-glass",
+    "refraction",
+    "fabric"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/griffinkrutherford/liquid-glass-react-native-android-open-source.git"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.76"
+  },
+  "devDependencies": {
+    "@react-native/codegen": "^0.81.0",
+    "@types/react": "^19.0.0",
+    "react": "^19.1.0",
+    "react-native": "^0.81.0",
+    "react-native-builder-bob": "^0.40.13",
+    "typescript": "^5.8.3"
+  },
+  "codegenConfig": {
+    "name": "RNLiquidGlassSpec",
+    "type": "components",
+    "jsSrcsDir": "src",
+    "android": {
+      "javaPackageName": "io.github.griffinkrutherford.liquidglass.react"
+    }
+  },
+  "react-native-builder-bob": {
+    "source": "src",
+    "output": "lib",
+    "targets": [
+      "commonjs",
+      "module",
+      [
+        "typescript",
+        {
+          "project": "tsconfig.json"
+        }
+      ],
+      "codegen"
+    ]
+  }
+}

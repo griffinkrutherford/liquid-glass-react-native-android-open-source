@@ -1,0 +1,10 @@
+gradle.projectsEvaluated {
+    def target = gradle.rootProject.project(':liquid-glass-view')
+    target.dependencies {
+        implementation 'com.facebook.react:react-android:0.81.0'
+    }
+    target.android.sourceSets.main.java.srcDirs += [
+        gradle.rootProject.file('android/src/main/java'),
+        gradle.rootProject.file('android/app/build/generated/source/codegen/java')
+    ]
+}
