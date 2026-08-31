@@ -23,11 +23,12 @@ class MainActivity : Activity() {
         scene.addView(label("LIQUID GLASS", 13f, Color.WHITE), margins(24, 34))
         scene.addView(label("Move the lens", 34f, Color.WHITE), margins(22, 58))
         scene.addView(
-            label("Watch the palm, horizon, and highlights fold around its rim", 14f, Color.argb(220, 255, 255, 255)),
+            label("Drag across the 3K photo, then tap to switch material", 14f, Color.argb(220, 255, 255, 255)),
             margins(23, 108),
         )
         scene.addView(label("REFRACTION  •  REFLECTION  •  PHYSICS", 11f, Color.WHITE), margins(24, 742))
 
+        val materialLabel = label("◇  Crystal", 20f, Color.WHITE)
         val card = LiquidGlassView(this).apply {
             effect = LiquidGlassEffect.CLEAR
             interactive = true
@@ -45,8 +46,20 @@ class MainActivity : Activity() {
 
             addView(label("SANUR, BALI", 14f, Color.WHITE), margins(22, 20))
             addView(label("29°", 58f, Color.WHITE), margins(20, 48))
-            addView(label("☀  Clear", 20f, Color.WHITE), margins(23, 126))
-            addView(label("Drag me across the photograph", 13f, Color.argb(225, 255, 255, 255)), margins(23, 164))
+            addView(materialLabel, margins(23, 126))
+            addView(label("Drag to move  •  Tap to change material", 13f, Color.argb(225, 255, 255, 255)), margins(23, 164))
+            setOnClickListener {
+                effect = when (effect) {
+                    LiquidGlassEffect.CLEAR -> LiquidGlassEffect.SATIN
+                    LiquidGlassEffect.SATIN -> LiquidGlassEffect.NOCTURNE
+                    else -> LiquidGlassEffect.CLEAR
+                }
+                materialLabel.text = when (effect) {
+                    LiquidGlassEffect.SATIN -> "◌  Satin"
+                    LiquidGlassEffect.NOCTURNE -> "●  Nocturne"
+                    else -> "◇  Crystal"
+                }
+            }
         }
         scene.addView(card, ViewGroup.MarginLayoutParams(resources.displayMetrics.widthPixels - dp(48), dp(212)).apply {
             leftMargin = dp(24)
