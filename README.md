@@ -18,7 +18,7 @@ Place ordinary views and the glass overlay inside a `LiquidGlassScene`:
 val scene = LiquidGlassScene(context)
 scene.addView(contentBehindTheGlass)
 scene.addView(LiquidGlassView(context).apply {
-    effect = LiquidGlassEffect.REGULAR // CLEAR, REGULAR, or NONE
+    effect = LiquidGlassEffect.SATIN
     interactive = true
     draggable = true // Optional; useful for demos and floating controls
     colorScheme = LiquidGlassColorScheme.SYSTEM
@@ -55,6 +55,13 @@ clear/regular/none effects, tint, light/dark/system appearance, animated effect
 changes, plus optional interaction that affects only the refraction physics. Callstack's iOS package
 wraps Apple's native `UIGlassEffect`; this project implements the observable
 behavior independently with Android rendering and custom physics.
+
+Additional Android-native materials use original project terminology:
+
+- `SATIN`: diffuse scattering and broader background blur while retaining the physical lens.
+- `NOCTURNE`: low-luminance, cool smoked glass with preserved refraction and Fresnel response.
+- `CLEAR` and `REGULAR`: compatibility modes matching the existing public API.
+- `NONE`: content without an optical material.
 
 ## Build
 

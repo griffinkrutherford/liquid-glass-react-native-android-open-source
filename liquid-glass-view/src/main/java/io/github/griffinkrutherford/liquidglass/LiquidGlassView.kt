@@ -32,7 +32,13 @@ class LiquidGlassView @JvmOverloads constructor(
             field = value
             animateMaterialChange(
                 targetMaterialization = if (value == LiquidGlassEffect.NONE) 0f else 1f,
-                targetRegularity = if (value == LiquidGlassEffect.REGULAR) 1f else 0f,
+                targetRegularity = when (value) {
+                    LiquidGlassEffect.CLEAR -> 0f
+                    LiquidGlassEffect.NOCTURNE -> 0.72f
+                    else -> 1f
+                },
+                targetFrostiness = if (value == LiquidGlassEffect.SATIN) 1f else 0f,
+                targetDarkness = if (value == LiquidGlassEffect.NOCTURNE) 1f else 0f,
             )
         }
     var colorScheme: LiquidGlassColorScheme = LiquidGlassColorScheme.SYSTEM
@@ -90,8 +96,11 @@ class LiquidGlassView @JvmOverloads constructor(
     private var dragStartRawY = 0f
     private var dragStartTranslationX = 0f
     private var dragStartTranslationY = 0f
+    private var hasDragged = false
     private var materialization = 1f
     private var regularity = 1f
+    private var frostiness = 0f
+    private var darkness = 0f
     private var materialAnimator: ValueAnimator? = null
 
     init {
@@ -177,6 +186,8 @@ class LiquidGlassView @JvmOverloads constructor(
         shader.setFloatUniform("blurRadius", blurRadius)
         shader.setFloatUniform("effectAmount", effectAmount)
         shader.setFloatUniform("regularity", regularity)
+        shader.setFloatUniform("frostiness", frostiness)
+        shader.setFloatUniform("darkness", darkness)
         shader.setFloatUniform("materialization", materialization)
         shader.setFloatUniform("appearance", resolvedAppearance())
         shader.setFloatUniform(
@@ -248,13 +259,17 @@ class LiquidGlassView @JvmOverloads constructor(
                 dragStartRawY = event.rawY
                 dragStartTranslationX = translationX
                 dragStartTranslationY = translationY
+                hasDragged = false
                 applyImpulse(event.x, event.y, 5.2f)
                 lastTouchX = event.x
                 lastTouchY = event.y
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
-                if (draggable) updateDragPosition(event)
+                if (draggable) {
+                    if (abs(event.rawX - dragStartRawX) + abs(event.rawY - dragStartRawY) > dp(6f)) hasDragged = true
+                    updateDragPosition(event)
+                }
                 if (abs(event.x - lastTouchX) + abs(event.y - lastTouchY) > dp(7f)) {
                     applyImpulse(event.x, event.y, 2.8f)
                     lastTouchX = event.x
@@ -264,7 +279,7 @@ class LiquidGlassView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 applyImpulse(event.x, event.y, -2.4f)
-                performClick()
+                if (!hasDragged && event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 return true
             }
         }
@@ -304,16 +319,25 @@ class LiquidGlassView @JvmOverloads constructor(
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
 
-    private fun animateMaterialChange(targetMaterialization: Float, targetRegularity: Float) {
+    private fun animateMaterialChange(
+        targetMaterialization: Float,
+        targetRegularity: Float,
+        targetFrostiness: Float,
+        targetDarkness: Float,
+    ) {
         materialAnimator?.cancel()
         if (!animated || animationDurationMillis == 0L) {
             materialization = targetMaterialization
             regularity = targetRegularity
+            frostiness = targetFrostiness
+            darkness = targetDarkness
             invalidate()
             return
         }
         val startMaterialization = materialization
         val startRegularity = regularity
+        val startFrostiness = frostiness
+        val startDarkness = darkness
         materialAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
             duration = animationDurationMillis
             interpolator = DecelerateInterpolator()
@@ -321,6 +345,8 @@ class LiquidGlassView @JvmOverloads constructor(
                 val fraction = it.animatedValue as Float
                 materialization = startMaterialization + (targetMaterialization - startMaterialization) * fraction
                 regularity = startRegularity + (targetRegularity - startRegularity) * fraction
+                frostiness = startFrostiness + (targetFrostiness - startFrostiness) * fraction
+                darkness = startDarkness + (targetDarkness - startDarkness) * fraction
                 invalidate()
             }
             start()
@@ -355,6 +381,8 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform float effectAmount;
             uniform float4 tint;
             uniform float regularity;
+            uniform float frostiness;
+            uniform float darkness;
             uniform float materialization;
             uniform float appearance;
 
@@ -430,7 +458,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 half4 base = backdrop.eval(sceneOrigin + p);
                 half4 b0 = backdrop.eval(sourceGreen);
                 float edgeSharpness = 1.0 - rim * 0.78;
-                float materialBlur = blurRadius * mix(0.22, edgeSharpness, regularity);
+                float materialBlur = blurRadius * mix(0.22, edgeSharpness, regularity) * (1.0 + frostiness * 3.8);
                 half4 b1 = backdrop.eval(sourceGreen + float2(materialBlur, 0.0));
                 half4 b2 = backdrop.eval(sourceGreen - float2(materialBlur, 0.0));
                 half4 b3 = backdrop.eval(sourceGreen + float2(0.0, materialBlur));
@@ -440,6 +468,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 half red = backdrop.eval(sourceRed).r;
                 half blue = backdrop.eval(sourceBlue).b;
                 half3 refracted = half3(red, blurred.g, blue);
+                refracted = mix(refracted, blurred, half(frostiness * 0.76));
 
                 float3 surfaceNormal = normalize(float3(-surfaceSlope.x, -surfaceSlope.y, 1.0));
                 float f0 = pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
@@ -451,9 +480,11 @@ class LiquidGlassView @JvmOverloads constructor(
                 refracted = mix(refracted, internalReflection, half(fresnel * mix(0.58, 0.42, regularity)));
 
                 float schemeLift = appearance * mix(0.025, 0.055, regularity);
-                float materialTint = tint.a * mix(0.42, 1.0, regularity);
+                float materialTint = tint.a * mix(0.42, 1.0, regularity) + frostiness * 0.12;
                 half3 glass = mix(refracted, half3(tint.rgb), half(materialTint));
                 glass += half3(schemeLift);
+                glass *= half(1.0 - darkness * 0.52);
+                glass = mix(glass, glass * half3(0.62, 0.72, 0.84), half(darkness * 0.38));
                 float opticalAmount = effectAmount * mix(0.72, 1.0, regularity) * materialization;
                 glass = mix(base.rgb, glass, half(opticalAmount));
                 return half4(glass, 1.0);

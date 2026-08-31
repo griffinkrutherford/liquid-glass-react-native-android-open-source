@@ -4,6 +4,8 @@ package io.github.griffinkrutherford.liquidglass
 enum class LiquidGlassEffect {
     CLEAR,
     REGULAR,
+    SATIN,
+    NOCTURNE,
     NONE,
 }
 
