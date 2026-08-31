@@ -23,6 +23,41 @@ cd android && ./gradlew app:assembleDebug
 Use a custom native build. Expo Go cannot load native libraries; Expo projects
 must use a development build.
 
+### One-time app setup
+
+You do not need to clone, vendor, or repeatedly reinstall this repository.
+Install the tagged package once from the root of the consuming React Native
+app, then create one native Android build:
+
+```shell
+npm install github:griffinkrutherford/liquid-glass-react-native-android-open-source#v0.1.0
+npx react-native run-android
+```
+
+The install records the dependency in the app's `package.json`:
+
+```json
+{
+  "dependencies": {
+    "@griffinkrutherford/liquid-glass-android": "github:griffinkrutherford/liquid-glass-react-native-android-open-source#v0.1.0"
+  }
+}
+```
+
+Commit both the manifest and lockfile so teammates and CI resolve the same
+release:
+
+```shell
+git add package.json package-lock.json
+git commit -m "Add Android liquid glass"
+```
+
+After this setup, normal TypeScript and component changes use React Native Fast
+Refresh; restarting the app does not reinstall the library. A fresh checkout
+only needs `npm ci`. Rebuild Android when the liquid-glass package version
+changes because updates may contain Kotlin, shader, or Fabric codegen changes.
+For Expo, make a new development build after native dependency updates.
+
 Place the background and glass elements inside one `LiquidGlassScene`. Glass
 elements sample non-glass siblings that appear behind them:
 
