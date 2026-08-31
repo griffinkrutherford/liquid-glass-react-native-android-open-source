@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.ViewGroup
 import android.widget.TextView
 import io.github.griffinkrutherford.liquidglass.LiquidGlassScene
+import io.github.griffinkrutherford.liquidglass.LiquidGlassEffect
 import io.github.griffinkrutherford.liquidglass.LiquidGlassView
 
 class MainActivity : Activity() {
@@ -23,20 +24,35 @@ class MainActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
 
-        val glass = LiquidGlassView(this).apply {
-            contentDescription = "Interactive refractive liquid glass surface"
-            cornerRadius = dp(34).toFloat()
-            refractionStrength = dp(22).toFloat()
-            dispersion = dp(3).toFloat()
-            blurRadius = dp(2).toFloat()
-        }
-        root.addView(glass, ViewGroup.MarginLayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(540),
-        ).apply {
+        val cardWidth = (resources.displayMetrics.widthPixels - dp(54)) / 2
+        val clearCard = weatherCard("Wrocław", "25°", "Sunny", LiquidGlassEffect.CLEAR, Color.rgb(255, 190, 105))
+        root.addView(clearCard, ViewGroup.MarginLayoutParams(cardWidth, dp(245)).apply {
             leftMargin = dp(18)
-            rightMargin = dp(18)
             topMargin = dp(175)
+        })
+
+        val regularCard = weatherCard("Miami", "35°", "Sunny", LiquidGlassEffect.REGULAR, Color.WHITE)
+        root.addView(regularCard, ViewGroup.MarginLayoutParams(cardWidth, dp(245)).apply {
+            leftMargin = dp(36) + cardWidth
+            topMargin = dp(175)
+        })
+
+        val buttonGlass = LiquidGlassView(this).apply {
+            effect = LiquidGlassEffect.REGULAR
+            interactive = true
+            cornerRadius = dp(28).toFloat()
+            refractionStrength = dp(18).toFloat()
+            addView(label("Interactive regular glass", 20f, Color.WHITE), ViewGroup.MarginLayoutParams(wrap, wrap).apply {
+                leftMargin = dp(52)
+                topMargin = dp(28)
+            })
+            setOnClickListener {
+                effect = if (effect == LiquidGlassEffect.NONE) LiquidGlassEffect.REGULAR else LiquidGlassEffect.NONE
+            }
+        }
+        root.addView(buttonGlass, ViewGroup.MarginLayoutParams(resources.displayMetrics.widthPixels - dp(36), dp(88)).apply {
+            leftMargin = dp(18)
+            topMargin = dp(445)
         })
 
         root.addView(label("LIQUID GLASS LAB", 13f, Color.rgb(125, 211, 252)),
@@ -54,10 +70,10 @@ class MainActivity : Activity() {
                 leftMargin = dp(25)
                 topMargin = dp(96)
             })
-        root.addView(label("REFRACTION  •  DISPERSION  •  FRESNEL  •  PHYSICS", 11f, Color.rgb(148, 197, 220)),
+        root.addView(label("CLEAR  •  REGULAR  •  INTERACTIVE  •  TINT", 11f, Color.rgb(148, 197, 220)),
             ViewGroup.MarginLayoutParams(wrap, wrap).apply {
                 leftMargin = dp(24)
-                topMargin = dp(742)
+                topMargin = dp(565)
             })
         setContentView(root)
     }
@@ -67,6 +83,37 @@ class MainActivity : Activity() {
         textSize = size
         setTextColor(color)
         letterSpacing = if (size <= 13f) 0.08f else 0f
+    }
+
+    private fun weatherCard(
+        city: String,
+        temperature: String,
+        description: String,
+        glassEffect: LiquidGlassEffect,
+        tint: Int,
+    ) = LiquidGlassView(this).apply {
+        effect = glassEffect
+        interactive = true
+        cornerRadius = dp(28).toFloat()
+        refractionStrength = dp(if (glassEffect == LiquidGlassEffect.CLEAR) 24 else 18).toFloat()
+        tintColor = tint
+        tintAmount = if (glassEffect == LiquidGlassEffect.CLEAR) 0.10f else 0.08f
+        addView(label(city, 18f, Color.WHITE), ViewGroup.MarginLayoutParams(wrap, wrap).apply {
+            leftMargin = dp(18)
+            topMargin = dp(18)
+        })
+        addView(label(temperature, 48f, Color.WHITE), ViewGroup.MarginLayoutParams(wrap, wrap).apply {
+            leftMargin = dp(16)
+            topMargin = dp(53)
+        })
+        addView(label("☀", 34f, tint), ViewGroup.MarginLayoutParams(wrap, wrap).apply {
+            leftMargin = dp(18)
+            topMargin = dp(124)
+        })
+        addView(label(description, 17f, Color.WHITE), ViewGroup.MarginLayoutParams(wrap, wrap).apply {
+            leftMargin = dp(18)
+            topMargin = dp(184)
+        })
     }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
