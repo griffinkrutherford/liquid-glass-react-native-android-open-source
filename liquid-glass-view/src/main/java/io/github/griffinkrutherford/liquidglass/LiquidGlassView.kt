@@ -442,7 +442,11 @@ class LiquidGlassView @JvmOverloads constructor(
                 float rim = 1.0 - smoothstep(0.0, 1.0, rimCoordinate);
                 float2 boundaryNormal = edgeNormal(p);
                 float opticalHeight = bevelHeight(p, zRadius);
-                float2 surfaceSlope = bevelGradient(p, zRadius) + physicsSlope;
+                float2 lensCoordinate = (p - size * 0.5) / max(size * 0.5, float2(1.0));
+                float lensDistance = clamp(length(lensCoordinate) * 0.7071, 0.0, 1.0);
+                float lensProfile = smoothstep(0.0, 1.0, lensDistance);
+                float2 broadLensSlope = lensCoordinate * mix(0.22, 0.32, regularity) * lensProfile;
+                float2 surfaceSlope = bevelGradient(p, zRadius) + broadLensSlope + physicsSlope;
                 float opticalGain = refraction / max(zRadius, 1.0) * mix(0.92, 0.72, regularity);
 
                 float iorDelta = dispersion * 0.0012;
@@ -458,7 +462,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 half4 base = backdrop.eval(sceneOrigin + p);
                 half4 b0 = backdrop.eval(sourceGreen);
                 float edgeSharpness = 1.0 - rim * 0.78;
-                float materialBlur = blurRadius * mix(0.22, edgeSharpness, regularity) * (1.0 + frostiness * 3.8);
+                float materialBlur = blurRadius * mix(0.48, edgeSharpness, regularity) * (1.0 + frostiness * 3.8);
                 half4 b1 = backdrop.eval(sourceGreen + float2(materialBlur, 0.0));
                 half4 b2 = backdrop.eval(sourceGreen - float2(materialBlur, 0.0));
                 half4 b3 = backdrop.eval(sourceGreen + float2(0.0, materialBlur));
@@ -468,6 +472,8 @@ class LiquidGlassView @JvmOverloads constructor(
                 half red = backdrop.eval(sourceRed).r;
                 half blue = backdrop.eval(sourceBlue).b;
                 half3 refracted = half3(red, blurred.g, blue);
+                float interiorTransmission = (1.0 - rim) * mix(0.18, 0.08, regularity);
+                refracted = mix(refracted, blurred, half(interiorTransmission));
                 refracted = mix(refracted, blurred, half(frostiness * 0.76));
 
                 float3 surfaceNormal = normalize(float3(-surfaceSlope.x, -surfaceSlope.y, 1.0));
@@ -485,7 +491,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 glass += half3(schemeLift);
                 glass *= half(1.0 - darkness * 0.52);
                 glass = mix(glass, glass * half3(0.62, 0.72, 0.84), half(darkness * 0.38));
-                float opticalAmount = effectAmount * mix(0.72, 1.0, regularity) * materialization;
+                float opticalAmount = effectAmount * mix(0.90, 1.0, regularity) * materialization;
                 glass = mix(base.rgb, glass, half(opticalAmount));
                 return half4(glass, 1.0);
             }
