@@ -33,8 +33,11 @@ class MainActivity : Activity() {
             interactive = true
             draggable = true
             cornerRadius = dp(34).toFloat()
-            refractionStrength = dp(22).toFloat()
+            refractionStrength = dp(28).toFloat()
             dispersion = dp(1.5f).toFloat()
+            indexOfRefraction = 1.50f
+            bevelDepth = dp(27).toFloat()
+            baseThickness = dp(8).toFloat()
             blurRadius = dp(2).toFloat()
             tintColor = Color.rgb(220, 242, 255)
             tintAmount = 0.075f
