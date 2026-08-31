@@ -2,7 +2,8 @@
 
 This application demonstrates `liquid-glass-view` over real Android scene content. On Android 13+
 the surface uses AGSL to refract a captured backdrop, add chromatic dispersion, a small blur,
-tint, Fresnel edge light, and physics-driven specular highlights. Older versions use a static
+tint, and Fresnel-style edge optics. Interaction changes only the sampled refraction field; there
+is no time-driven sheen or press scaling. Older versions use a static
 translucent fallback.
 
 Run it from Android Studio or with:

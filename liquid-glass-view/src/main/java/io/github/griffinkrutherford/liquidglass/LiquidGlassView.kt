@@ -86,9 +86,7 @@ class LiquidGlassView @JvmOverloads constructor(
     private var dragStartTranslationY = 0f
     private var materialization = 1f
     private var regularity = 1f
-    private var pressProgress = 0f
     private var materialAnimator: ValueAnimator? = null
-    private var pressAnimator: ValueAnimator? = null
 
     init {
         setWillNotDraw(false)
@@ -171,8 +169,6 @@ class LiquidGlassView @JvmOverloads constructor(
         shader.setFloatUniform("effectAmount", effectAmount)
         shader.setFloatUniform("regularity", regularity)
         shader.setFloatUniform("materialization", materialization)
-        shader.setFloatUniform("pressProgress", pressProgress)
-        shader.setFloatUniform("time", System.nanoTime() / 1_000_000_000f)
         shader.setFloatUniform("appearance", resolvedAppearance())
         shader.setFloatUniform(
             "tint",
@@ -244,7 +240,6 @@ class LiquidGlassView @JvmOverloads constructor(
                 dragStartTranslationX = translationX
                 dragStartTranslationY = translationY
                 applyImpulse(event.x, event.y, 5.2f)
-                animatePress(1f)
                 lastTouchX = event.x
                 lastTouchY = event.y
                 return true
@@ -260,7 +255,6 @@ class LiquidGlassView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 applyImpulse(event.x, event.y, -2.4f)
-                animatePress(0f)
                 performClick()
                 return true
             }
@@ -279,7 +273,6 @@ class LiquidGlassView @JvmOverloads constructor(
         backdropInput = null
         backdropInputBitmap = null
         materialAnimator?.cancel()
-        pressAnimator?.cancel()
         super.onDetachedFromWindow()
     }
 
@@ -325,22 +318,6 @@ class LiquidGlassView @JvmOverloads constructor(
         }
     }
 
-    private fun animatePress(target: Float) {
-        pressAnimator?.cancel()
-        pressAnimator = ValueAnimator.ofFloat(pressProgress, target).apply {
-            duration = if (target > pressProgress) 160L else 260L
-            interpolator = DecelerateInterpolator()
-            addUpdateListener {
-                pressProgress = it.animatedValue as Float
-                val scale = 1f + pressProgress * 0.018f
-                scaleX = scale
-                scaleY = scale
-                invalidate()
-            }
-            start()
-        }
-    }
-
     private fun resolvedAppearance(): Float {
         val dark = when (colorScheme) {
             LiquidGlassColorScheme.DARK -> true
@@ -367,8 +344,6 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform float4 tint;
             uniform float regularity;
             uniform float materialization;
-            uniform float pressProgress;
-            uniform float time;
             uniform float appearance;
 
             half heightAt(float2 uv) {
@@ -427,24 +402,18 @@ class LiquidGlassView @JvmOverloads constructor(
                 float reflectionBand = pow(rim, 2.2) * mix(0.13, 0.075, regularity);
                 refracted = mix(refracted, internalReflection, half(reflectionBand));
 
-                float3 surfaceNormal = normalize(float3(-normal.x * 3.0, -normal.y * 3.0, 1.0));
-                float specular = pow(max(dot(surfaceNormal, normalize(float3(-0.45, -0.55, 1.0))), 0.0), 22.0);
                 float directionalEdge = dot(boundaryNormal, normalize(float2(-0.65, -0.75)));
                 float outerLip = exp(-insideDistance / max(rimWidth * 0.13, 1.0));
                 float innerCaustic = exp(-pow((rimCoordinate - 0.48) / 0.16, 2.0));
                 float edgeHighlight = outerLip * max(directionalEdge * 0.5 + 0.5, 0.0);
                 float edgeShadow = outerLip * max(-directionalEdge, 0.0);
-                float shimmerPosition = fract(time * 0.55) * 2.4 - 0.7;
-                float shimmer = exp(-pow((uv.x + uv.y * 0.35) - shimmerPosition, 2.0) * 75.0) * pressProgress;
                 float schemeLift = appearance * mix(0.025, 0.055, regularity);
                 float materialTint = tint.a * mix(0.42, 1.0, regularity);
                 half3 glass = mix(refracted, half3(tint.rgb), half(materialTint));
                 glass += half3(
                     schemeLift +
-                    specular * 0.24 +
                     edgeHighlight * mix(0.22, 0.15, regularity) +
-                    innerCaustic * mix(0.075, 0.045, regularity) +
-                    shimmer * 0.24
+                    innerCaustic * mix(0.075, 0.045, regularity)
                 );
                 glass -= half3(edgeShadow * mix(0.08, 0.12, regularity));
                 float opticalAmount = effectAmount * mix(0.72, 1.0, regularity) * materialization;
