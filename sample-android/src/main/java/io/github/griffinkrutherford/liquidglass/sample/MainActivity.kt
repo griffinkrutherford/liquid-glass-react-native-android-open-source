@@ -3,10 +3,10 @@ package io.github.griffinkrutherford.liquidglass.sample
 import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
-import android.view.Gravity
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.TextView
+import io.github.griffinkrutherford.liquidglass.LiquidGlassScene
+import io.github.griffinkrutherford.liquidglass.LiquidGlassView
 
 class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -14,37 +14,50 @@ class MainActivity : Activity() {
         window.statusBarColor = Color.rgb(7, 18, 31)
         window.navigationBarColor = Color.rgb(7, 18, 31)
 
-        val root = FrameLayout(this).apply {
+        val root = LiquidGlassScene(this).apply {
             setBackgroundColor(Color.rgb(7, 18, 31))
         }
-        val demo = LiquidGlassDemoView(this)
-        root.addView(demo, FrameLayout.LayoutParams(
+
+        root.addView(BackdropArtworkView(this), ViewGroup.MarginLayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT,
         ))
 
+        val glass = LiquidGlassView(this).apply {
+            contentDescription = "Interactive refractive liquid glass surface"
+            cornerRadius = dp(34).toFloat()
+            refractionStrength = dp(22).toFloat()
+            dispersion = dp(3).toFloat()
+            blurRadius = dp(2).toFloat()
+        }
+        root.addView(glass, ViewGroup.MarginLayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(540),
+        ).apply {
+            leftMargin = dp(18)
+            rightMargin = dp(18)
+            topMargin = dp(175)
+        })
+
         root.addView(label("LIQUID GLASS LAB", 13f, Color.rgb(125, 211, 252)),
-            FrameLayout.LayoutParams(wrap, wrap).apply {
-                gravity = Gravity.TOP or Gravity.START
+            ViewGroup.MarginLayoutParams(wrap, wrap).apply {
                 leftMargin = dp(24)
                 topMargin = dp(30)
             })
         root.addView(label("Touch the surface", 28f, Color.WHITE),
-            FrameLayout.LayoutParams(wrap, wrap).apply {
-                gravity = Gravity.TOP or Gravity.START
+            ViewGroup.MarginLayoutParams(wrap, wrap).apply {
                 leftMargin = dp(24)
                 topMargin = dp(54)
             })
-        root.addView(label("Drag to send ripples through the mesh", 14f, Color.rgb(176, 198, 216)),
-            FrameLayout.LayoutParams(wrap, wrap).apply {
-                gravity = Gravity.TOP or Gravity.START
+        root.addView(label("Drag to bend the elements behind the glass", 14f, Color.rgb(176, 198, 216)),
+            ViewGroup.MarginLayoutParams(wrap, wrap).apply {
                 leftMargin = dp(25)
                 topMargin = dp(96)
             })
-        root.addView(label("Custom spring-membrane physics  •  Live", 12f, Color.rgb(148, 197, 220)),
-            FrameLayout.LayoutParams(wrap, wrap).apply {
-                gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = dp(26)
+        root.addView(label("REFRACTION  •  DISPERSION  •  FRESNEL  •  PHYSICS", 11f, Color.rgb(148, 197, 220)),
+            ViewGroup.MarginLayoutParams(wrap, wrap).apply {
+                leftMargin = dp(24)
+                topMargin = dp(742)
             })
         setContentView(root)
     }
