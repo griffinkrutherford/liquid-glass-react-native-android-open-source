@@ -1,6 +1,7 @@
 package io.github.griffinkrutherford.liquidglass
 
 import android.annotation.TargetApi
+import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
@@ -13,7 +14,8 @@ import android.graphics.Shader
 import android.os.Build
 import android.util.AttributeSet
 import android.view.MotionEvent
-import android.view.View
+import android.view.ViewGroup
+import android.view.animation.DecelerateInterpolator
 import com.griffinkrutherford.liquidglass.core.FixedTimestepRunner
 import com.griffinkrutherford.liquidglass.core.LiquidMembrane
 import com.griffinkrutherford.liquidglass.core.LiquidPhysicsConfig
@@ -23,7 +25,22 @@ import kotlin.math.abs
 class LiquidGlassView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
-) : View(context, attrs) {
+) : ViewGroup(context, attrs) {
+    var effect: LiquidGlassEffect = LiquidGlassEffect.REGULAR
+        set(value) {
+            if (field == value) return
+            field = value
+            animateMaterialChange(
+                targetMaterialization = if (value == LiquidGlassEffect.NONE) 0f else 1f,
+                targetRegularity = if (value == LiquidGlassEffect.REGULAR) 1f else 0f,
+            )
+        }
+    var colorScheme: LiquidGlassColorScheme = LiquidGlassColorScheme.SYSTEM
+        set(value) { field = value; invalidate() }
+    var interactive: Boolean = false
+    var animated: Boolean = true
+    var animationDurationMillis: Long = 320L
+        set(value) { field = value.coerceAtLeast(0L) }
     var cornerRadius = dp(32f)
         set(value) { field = value.coerceAtLeast(0f); invalidate() }
     var refractionStrength = dp(24f)
@@ -62,14 +79,46 @@ class LiquidGlassView @JvmOverloads constructor(
     private var previousFrameNanos = 0L
     private var lastTouchX = Float.NaN
     private var lastTouchY = Float.NaN
+    private var materialization = 1f
+    private var regularity = 1f
+    private var pressProgress = 0f
+    private var materialAnimator: ValueAnimator? = null
+    private var pressAnimator: ValueAnimator? = null
 
     init {
+        setWillNotDraw(false)
         setLayerType(LAYER_TYPE_HARDWARE, null)
         if (Build.VERSION.SDK_INT >= 33) runtimeShader = RuntimeShader(GLASS_SHADER)
     }
 
     internal fun setSceneBackdrop(bitmap: Bitmap) {
         sceneBackdrop = bitmap
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+        for (index in 0 until childCount) {
+            measureChildWithMargins(getChildAt(index), widthMeasureSpec, paddingLeft + paddingRight, heightMeasureSpec, paddingTop + paddingBottom)
+        }
+    }
+
+    override fun generateDefaultLayoutParams(): LayoutParams =
+        MarginLayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT)
+
+    override fun generateLayoutParams(attrs: AttributeSet?): LayoutParams = MarginLayoutParams(context, attrs)
+
+    override fun generateLayoutParams(params: LayoutParams?): LayoutParams = MarginLayoutParams(params)
+
+    override fun checkLayoutParams(params: LayoutParams?): Boolean = params is MarginLayoutParams
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        for (index in 0 until childCount) {
+            val child = getChildAt(index)
+            val params = child.layoutParams as MarginLayoutParams
+            val childLeft = paddingLeft + params.leftMargin
+            val childTop = paddingTop + params.topMargin
+            child.layout(childLeft, childTop, childLeft + child.measuredWidth, childTop + child.measuredHeight)
+        }
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
@@ -114,6 +163,11 @@ class LiquidGlassView @JvmOverloads constructor(
         shader.setFloatUniform("dispersion", dispersion)
         shader.setFloatUniform("blurRadius", blurRadius)
         shader.setFloatUniform("effectAmount", effectAmount)
+        shader.setFloatUniform("regularity", regularity)
+        shader.setFloatUniform("materialization", materialization)
+        shader.setFloatUniform("pressProgress", pressProgress)
+        shader.setFloatUniform("time", System.nanoTime() / 1_000_000_000f)
+        shader.setFloatUniform("appearance", resolvedAppearance())
         shader.setFloatUniform(
             "tint",
             Color.red(tintColor) / 255f,
@@ -146,17 +200,21 @@ class LiquidGlassView @JvmOverloads constructor(
         }
 
     private fun drawFallbackGlass(canvas: Canvas) {
+        if (materialization <= 0.001f) return
         paint.shader = LinearGradient(
             0f, 0f, width.toFloat(), height.toFloat(),
             intArrayOf(Color.argb(125, 224, 245, 255), Color.argb(70, 126, 196, 232), Color.argb(105, 216, 242, 255)),
             null,
             Shader.TileMode.CLAMP,
         )
+        paint.alpha = (materialization * if (effect == LiquidGlassEffect.CLEAR) 150 else 220).toInt()
         canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), cornerRadius, cornerRadius, paint)
+        paint.alpha = 255
         paint.shader = null
     }
 
     private fun drawBorder(canvas: Canvas) {
+        if (materialization <= 0.001f) return
         borderPaint.shader = LinearGradient(
             0f, 0f, width.toFloat(), height.toFloat(),
             intArrayOf(Color.argb(235, 255, 255, 255), Color.argb(45, 255, 255, 255), Color.argb(170, 168, 220, 255)),
@@ -164,15 +222,19 @@ class LiquidGlassView @JvmOverloads constructor(
             Shader.TileMode.CLAMP,
         )
         val inset = borderPaint.strokeWidth / 2f
+        borderPaint.alpha = (materialization * 255).toInt()
         canvas.drawRoundRect(inset, inset, width - inset, height - inset, cornerRadius, cornerRadius, borderPaint)
+        borderPaint.alpha = 255
         borderPaint.shader = null
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                if (!interactive) return false
                 parent.requestDisallowInterceptTouchEvent(true)
                 applyImpulse(event.x, event.y, 5.2f)
+                animatePress(1f)
                 lastTouchX = event.x
                 lastTouchY = event.y
                 return true
@@ -187,6 +249,7 @@ class LiquidGlassView @JvmOverloads constructor(
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 applyImpulse(event.x, event.y, -2.4f)
+                animatePress(0f)
                 performClick()
                 return true
             }
@@ -204,6 +267,8 @@ class LiquidGlassView @JvmOverloads constructor(
         sceneBackdrop = null
         backdropInput = null
         backdropInputBitmap = null
+        materialAnimator?.cancel()
+        pressAnimator?.cancel()
         super.onDetachedFromWindow()
     }
 
@@ -218,6 +283,56 @@ class LiquidGlassView @JvmOverloads constructor(
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
 
+    private fun animateMaterialChange(targetMaterialization: Float, targetRegularity: Float) {
+        materialAnimator?.cancel()
+        if (!animated || animationDurationMillis == 0L) {
+            materialization = targetMaterialization
+            regularity = targetRegularity
+            invalidate()
+            return
+        }
+        val startMaterialization = materialization
+        val startRegularity = regularity
+        materialAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = animationDurationMillis
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                val fraction = it.animatedValue as Float
+                materialization = startMaterialization + (targetMaterialization - startMaterialization) * fraction
+                regularity = startRegularity + (targetRegularity - startRegularity) * fraction
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    private fun animatePress(target: Float) {
+        pressAnimator?.cancel()
+        pressAnimator = ValueAnimator.ofFloat(pressProgress, target).apply {
+            duration = if (target > pressProgress) 160L else 260L
+            interpolator = DecelerateInterpolator()
+            addUpdateListener {
+                pressProgress = it.animatedValue as Float
+                val scale = 1f + pressProgress * 0.018f
+                scaleX = scale
+                scaleY = scale
+                invalidate()
+            }
+            start()
+        }
+    }
+
+    private fun resolvedAppearance(): Float {
+        val dark = when (colorScheme) {
+            LiquidGlassColorScheme.DARK -> true
+            LiquidGlassColorScheme.LIGHT -> false
+            LiquidGlassColorScheme.SYSTEM ->
+                resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK ==
+                    android.content.res.Configuration.UI_MODE_NIGHT_YES
+        }
+        return if (dark) -1f else 1f
+    }
+
     private companion object {
         const val GLASS_SHADER = """
             uniform shader backdrop;
@@ -230,6 +345,11 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform float blurRadius;
             uniform float effectAmount;
             uniform float4 tint;
+            uniform float regularity;
+            uniform float materialization;
+            uniform float pressProgress;
+            uniform float time;
+            uniform float appearance;
 
             half heightAt(float2 uv) {
                 float2 coordinate = clamp(uv, float2(0.0), float2(1.0)) * (gridSize - 1.0);
@@ -252,10 +372,11 @@ class LiquidGlassView @JvmOverloads constructor(
 
                 half4 base = backdrop.eval(sceneOrigin + p);
                 half4 b0 = backdrop.eval(source);
-                half4 b1 = backdrop.eval(source + float2(blurRadius, 0.0));
-                half4 b2 = backdrop.eval(source - float2(blurRadius, 0.0));
-                half4 b3 = backdrop.eval(source + float2(0.0, blurRadius));
-                half4 b4 = backdrop.eval(source - float2(0.0, blurRadius));
+                float materialBlur = blurRadius * mix(0.28, 1.0, regularity);
+                half4 b1 = backdrop.eval(source + float2(materialBlur, 0.0));
+                half4 b2 = backdrop.eval(source - float2(materialBlur, 0.0));
+                half4 b3 = backdrop.eval(source + float2(0.0, materialBlur));
+                half4 b4 = backdrop.eval(source - float2(0.0, materialBlur));
                 half3 blurred = (b0.rgb * 2.0 + b1.rgb + b2.rgb + b3.rgb + b4.rgb) / 6.0;
 
                 half red = backdrop.eval(source + normal * dispersion).r;
@@ -265,9 +386,14 @@ class LiquidGlassView @JvmOverloads constructor(
                 float3 surfaceNormal = normalize(float3(-normal.x * 3.0, -normal.y * 3.0, 1.0));
                 float specular = pow(max(dot(surfaceNormal, normalize(float3(-0.45, -0.55, 1.0))), 0.0), 22.0);
                 float fresnel = pow(clamp(edgeDistance, 0.0, 1.0), 3.0);
-                half3 glass = mix(refracted, half3(tint.rgb), half(tint.a));
-                glass += half3(specular * 0.32 + fresnel * 0.12);
-                glass = mix(base.rgb, glass, half(effectAmount));
+                float shimmerPosition = fract(time * 0.55) * 2.4 - 0.7;
+                float shimmer = exp(-pow((uv.x + uv.y * 0.35) - shimmerPosition, 2.0) * 75.0) * pressProgress;
+                float schemeLift = appearance * mix(0.025, 0.055, regularity);
+                float materialTint = tint.a * mix(0.42, 1.0, regularity);
+                half3 glass = mix(refracted, half3(tint.rgb), half(materialTint));
+                glass += half3(schemeLift + specular * 0.28 + fresnel * mix(0.16, 0.1, regularity) + shimmer * 0.24);
+                float opticalAmount = effectAmount * mix(0.72, 1.0, regularity) * materialization;
+                glass = mix(base.rgb, glass, half(opticalAmount));
                 return half4(glass, 1.0);
             }
         """
