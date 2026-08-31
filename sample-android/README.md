@@ -11,5 +11,8 @@ Run it from Android Studio or with:
 ./gradlew :sample-android:installDebug
 ```
 
-Then touch or drag inside the glass panel. The custom membrane changes the refraction normals in
-real time, bending the colored cards and grid behind the surface.
+The demo uses a real CC0 beach photograph containing sky gradients, detailed palm fronds, a hard
+horizon, and water highlights. Drag the weather card anywhere on the screen to compare how those
+features fold through its inner rim. Dragging also excites the custom membrane physics.
+
+See [ASSET_ATTRIBUTION.md](ASSET_ATTRIBUTION.md) for the photograph source and license.
