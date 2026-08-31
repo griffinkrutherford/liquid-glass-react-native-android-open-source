@@ -48,6 +48,12 @@ class LiquidGlassView @JvmOverloads constructor(
         set(value) { field = value.coerceIn(0f, dp(80f)); invalidate() }
     var dispersion = dp(2.4f)
         set(value) { field = value.coerceIn(0f, dp(12f)); invalidate() }
+    var indexOfRefraction = 1.47f
+        set(value) { field = value.coerceIn(1.01f, 2.2f); invalidate() }
+    var bevelDepth = dp(22f)
+        set(value) { field = value.coerceIn(dp(2f), dp(48f)); invalidate() }
+    var baseThickness = dp(6f)
+        set(value) { field = value.coerceIn(0f, dp(24f)); invalidate() }
     var blurRadius = dp(2.2f)
         set(value) { field = value.coerceIn(0f, dp(12f)); invalidate() }
     var effectAmount = 0.96f
@@ -165,6 +171,9 @@ class LiquidGlassView @JvmOverloads constructor(
         shader.setFloatUniform("cornerRadius", cornerRadius)
         shader.setFloatUniform("refraction", refractionStrength)
         shader.setFloatUniform("dispersion", dispersion)
+        shader.setFloatUniform("indexOfRefraction", indexOfRefraction)
+        shader.setFloatUniform("bevelDepth", bevelDepth)
+        shader.setFloatUniform("baseThickness", baseThickness)
         shader.setFloatUniform("blurRadius", blurRadius)
         shader.setFloatUniform("effectAmount", effectAmount)
         shader.setFloatUniform("regularity", regularity)
@@ -339,6 +348,9 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform float cornerRadius;
             uniform float refraction;
             uniform float dispersion;
+            uniform float indexOfRefraction;
+            uniform float bevelDepth;
+            uniform float baseThickness;
             uniform float blurRadius;
             uniform float effectAmount;
             uniform float4 tint;
@@ -365,57 +377,83 @@ class LiquidGlassView @JvmOverloads constructor(
                 return normalize(float2(dx, dy) + float2(0.0001));
             }
 
+            float bevelHeight(float2 p, float radius) {
+                float distanceInside = max(-roundedBoxSdf(p), 0.0);
+                if (distanceInside >= radius) return radius;
+                return sqrt(max(distanceInside * (2.0 * radius - distanceInside), 0.0));
+            }
+
+            float2 bevelGradient(float2 p, float radius) {
+                float epsilon = 1.5;
+                float dx = bevelHeight(p + float2(epsilon, 0.0), radius) -
+                    bevelHeight(p - float2(epsilon, 0.0), radius);
+                float dy = bevelHeight(p + float2(0.0, epsilon), radius) -
+                    bevelHeight(p - float2(0.0, epsilon), radius);
+                return float2(dx, dy) / (2.0 * epsilon);
+            }
+
+            float2 refractedRayOffset(float2 slope, float opticalHeight, float ior, float gain) {
+                float refractionPower = 1.0 - 1.0 / max(ior, 1.001);
+                float pathLength = baseThickness + opticalHeight * 2.0;
+                float2 result = slope * refractionPower * pathLength * gain;
+                float limit = refraction * 0.72;
+                float magnitude = length(result);
+                return result * min(1.0, limit / max(magnitude, 0.001));
+            }
+
             half4 main(float2 p) {
                 float2 uv = p / size;
                 float2 texel = 1.0 / max(gridSize - 1.0, float2(1.0));
                 float dx = float(heightAt(uv + float2(texel.x, 0.0)) - heightAt(uv - float2(texel.x, 0.0)));
                 float dy = float(heightAt(uv + float2(0.0, texel.y)) - heightAt(uv - float2(0.0, texel.y)));
-                float2 normal = float2(dx, dy) * 2.0;
+                float2 physicsSlope = float2(dx, dy) * mix(1.1, 0.82, regularity);
 
                 float insideDistance = max(-roundedBoxSdf(p), 0.0);
-                float rimWidth = clamp(min(size.x, size.y) * 0.075, 14.0, 38.0);
-                float rimCoordinate = clamp(insideDistance / rimWidth, 0.0, 1.0);
+                float zRadius = min(bevelDepth, min(size.x, size.y) * 0.24);
+                float rimCoordinate = clamp(insideDistance / zRadius, 0.0, 1.0);
                 float rim = 1.0 - smoothstep(0.0, 1.0, rimCoordinate);
                 float2 boundaryNormal = edgeNormal(p);
-                float lensBand = exp(-pow((rimCoordinate - 0.30) * 2.9, 2.0));
-                float edgePower = mix(0.32, 0.22, regularity);
-                float physicsPower = mix(0.32, 0.22, regularity);
-                float2 offset = normal * refraction * physicsPower + boundaryNormal * lensBand * refraction * edgePower;
-                float2 source = sceneOrigin + p + offset;
+                float opticalHeight = bevelHeight(p, zRadius);
+                float2 surfaceSlope = bevelGradient(p, zRadius) + physicsSlope;
+                float opticalGain = refraction / max(zRadius, 1.0) * mix(0.92, 0.72, regularity);
+
+                float iorDelta = dispersion * 0.0012;
+                float iorRed = max(indexOfRefraction - iorDelta, 1.001);
+                float iorBlue = indexOfRefraction + iorDelta;
+                float2 offsetRed = refractedRayOffset(surfaceSlope, opticalHeight, iorRed, opticalGain);
+                float2 offsetGreen = refractedRayOffset(surfaceSlope, opticalHeight, indexOfRefraction, opticalGain);
+                float2 offsetBlue = refractedRayOffset(surfaceSlope, opticalHeight, iorBlue, opticalGain);
+                float2 sourceRed = sceneOrigin + p + offsetRed;
+                float2 sourceGreen = sceneOrigin + p + offsetGreen;
+                float2 sourceBlue = sceneOrigin + p + offsetBlue;
 
                 half4 base = backdrop.eval(sceneOrigin + p);
-                half4 b0 = backdrop.eval(source);
-                float materialBlur = blurRadius * mix(0.28, 1.0, regularity);
-                half4 b1 = backdrop.eval(source + float2(materialBlur, 0.0));
-                half4 b2 = backdrop.eval(source - float2(materialBlur, 0.0));
-                half4 b3 = backdrop.eval(source + float2(0.0, materialBlur));
-                half4 b4 = backdrop.eval(source - float2(0.0, materialBlur));
+                half4 b0 = backdrop.eval(sourceGreen);
+                float edgeSharpness = 1.0 - rim * 0.78;
+                float materialBlur = blurRadius * mix(0.22, edgeSharpness, regularity);
+                half4 b1 = backdrop.eval(sourceGreen + float2(materialBlur, 0.0));
+                half4 b2 = backdrop.eval(sourceGreen - float2(materialBlur, 0.0));
+                half4 b3 = backdrop.eval(sourceGreen + float2(0.0, materialBlur));
+                half4 b4 = backdrop.eval(sourceGreen - float2(0.0, materialBlur));
                 half3 blurred = (b0.rgb * 2.0 + b1.rgb + b2.rgb + b3.rgb + b4.rgb) / 6.0;
 
-                float2 chromaNormal = normal + boundaryNormal * rim * 0.42;
-                half red = backdrop.eval(source + chromaNormal * dispersion).r;
-                half blue = backdrop.eval(source - chromaNormal * dispersion).b;
+                half red = backdrop.eval(sourceRed).r;
+                half blue = backdrop.eval(sourceBlue).b;
                 half3 refracted = half3(red, blurred.g, blue);
 
-                float reflectionDepth = rimWidth * mix(0.55, 0.72, regularity);
-                half3 internalReflection = backdrop.eval(sceneOrigin + p - boundaryNormal * reflectionDepth).rgb;
-                float reflectionBand = pow(rim, 2.2) * mix(0.13, 0.075, regularity);
-                refracted = mix(refracted, internalReflection, half(reflectionBand));
+                float3 surfaceNormal = normalize(float3(-surfaceSlope.x, -surfaceSlope.y, 1.0));
+                float f0 = pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
+                float fresnel = f0 + (1.0 - f0) * pow(1.0 - abs(surfaceNormal.z), 5.0);
+                float2 reflectionDirection = normalize(surfaceSlope + boundaryNormal * 0.001);
+                half3 internalReflection = backdrop.eval(
+                    sceneOrigin + p - reflectionDirection * zRadius * mix(0.32, 0.46, regularity)
+                ).rgb;
+                refracted = mix(refracted, internalReflection, half(fresnel * mix(0.58, 0.42, regularity)));
 
-                float directionalEdge = dot(boundaryNormal, normalize(float2(-0.65, -0.75)));
-                float outerLip = exp(-insideDistance / max(rimWidth * 0.13, 1.0));
-                float innerCaustic = exp(-pow((rimCoordinate - 0.48) / 0.16, 2.0));
-                float edgeHighlight = outerLip * max(directionalEdge * 0.5 + 0.5, 0.0);
-                float edgeShadow = outerLip * max(-directionalEdge, 0.0);
                 float schemeLift = appearance * mix(0.025, 0.055, regularity);
                 float materialTint = tint.a * mix(0.42, 1.0, regularity);
                 half3 glass = mix(refracted, half3(tint.rgb), half(materialTint));
-                glass += half3(
-                    schemeLift +
-                    edgeHighlight * mix(0.22, 0.15, regularity) +
-                    innerCaustic * mix(0.075, 0.045, regularity)
-                );
-                glass -= half3(edgeShadow * mix(0.08, 0.12, regularity));
+                glass += half3(schemeLift);
                 float opticalAmount = effectAmount * mix(0.72, 1.0, regularity) * materialization;
                 glass = mix(base.rgb, glass, half(opticalAmount));
                 return half4(glass, 1.0);
