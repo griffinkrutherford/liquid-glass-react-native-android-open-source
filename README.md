@@ -20,6 +20,7 @@ scene.addView(contentBehindTheGlass)
 scene.addView(LiquidGlassView(context).apply {
     effect = LiquidGlassEffect.REGULAR // CLEAR, REGULAR, or NONE
     interactive = true
+    draggable = true // Optional; useful for demos and floating controls
     colorScheme = LiquidGlassColorScheme.SYSTEM
     refractionStrength = 48f
     dispersion = 6f

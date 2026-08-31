@@ -38,6 +38,7 @@ class LiquidGlassView @JvmOverloads constructor(
     var colorScheme: LiquidGlassColorScheme = LiquidGlassColorScheme.SYSTEM
         set(value) { field = value; invalidate() }
     var interactive: Boolean = false
+    var draggable: Boolean = false
     var animated: Boolean = true
     var animationDurationMillis: Long = 320L
         set(value) { field = value.coerceAtLeast(0L) }
@@ -79,6 +80,10 @@ class LiquidGlassView @JvmOverloads constructor(
     private var previousFrameNanos = 0L
     private var lastTouchX = Float.NaN
     private var lastTouchY = Float.NaN
+    private var dragStartRawX = 0f
+    private var dragStartRawY = 0f
+    private var dragStartTranslationX = 0f
+    private var dragStartTranslationY = 0f
     private var materialization = 1f
     private var regularity = 1f
     private var pressProgress = 0f
@@ -157,8 +162,9 @@ class LiquidGlassView @JvmOverloads constructor(
         shader.setInputShader("backdrop", requireNotNull(backdropInput))
         shader.setInputShader("heightMap", requireNotNull(heightInput))
         shader.setFloatUniform("size", width.toFloat(), height.toFloat())
-        shader.setFloatUniform("sceneOrigin", left.toFloat(), top.toFloat())
+        shader.setFloatUniform("sceneOrigin", x, y)
         shader.setFloatUniform("gridSize", normalBitmap.width.toFloat(), normalBitmap.height.toFloat())
+        shader.setFloatUniform("cornerRadius", cornerRadius)
         shader.setFloatUniform("refraction", refractionStrength)
         shader.setFloatUniform("dispersion", dispersion)
         shader.setFloatUniform("blurRadius", blurRadius)
@@ -233,6 +239,10 @@ class LiquidGlassView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 if (!interactive) return false
                 parent.requestDisallowInterceptTouchEvent(true)
+                dragStartRawX = event.rawX
+                dragStartRawY = event.rawY
+                dragStartTranslationX = translationX
+                dragStartTranslationY = translationY
                 applyImpulse(event.x, event.y, 5.2f)
                 animatePress(1f)
                 lastTouchX = event.x
@@ -240,6 +250,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
+                if (draggable) updateDragPosition(event)
                 if (abs(event.x - lastTouchX) + abs(event.y - lastTouchY) > dp(7f)) {
                     applyImpulse(event.x, event.y, 2.8f)
                     lastTouchX = event.x
@@ -279,6 +290,14 @@ class LiquidGlassView @JvmOverloads constructor(
             minOf(width, height) * 0.24f,
             strength,
         )
+    }
+
+    private fun updateDragPosition(event: MotionEvent) {
+        val container = parent as? ViewGroup ?: return
+        val targetX = dragStartTranslationX + event.rawX - dragStartRawX
+        val targetY = dragStartTranslationY + event.rawY - dragStartRawY
+        translationX = targetX.coerceIn(-left.toFloat(), (container.width - right).toFloat())
+        translationY = targetY.coerceIn(-top.toFloat(), (container.height - bottom).toFloat())
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
@@ -340,6 +359,7 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform float2 size;
             uniform float2 sceneOrigin;
             uniform float2 gridSize;
+            uniform float cornerRadius;
             uniform float refraction;
             uniform float dispersion;
             uniform float blurRadius;
@@ -356,6 +376,20 @@ class LiquidGlassView @JvmOverloads constructor(
                 return heightMap.eval(coordinate).r;
             }
 
+            float roundedBoxSdf(float2 p) {
+                float2 halfSize = size * 0.5;
+                float radius = min(cornerRadius, min(halfSize.x, halfSize.y));
+                float2 q = abs(p - halfSize) - (halfSize - radius);
+                return length(max(q, float2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+            }
+
+            float2 edgeNormal(float2 p) {
+                float epsilon = 1.25;
+                float dx = roundedBoxSdf(p + float2(epsilon, 0.0)) - roundedBoxSdf(p - float2(epsilon, 0.0));
+                float dy = roundedBoxSdf(p + float2(0.0, epsilon)) - roundedBoxSdf(p - float2(0.0, epsilon));
+                return normalize(float2(dx, dy) + float2(0.0001));
+            }
+
             half4 main(float2 p) {
                 float2 uv = p / size;
                 float2 texel = 1.0 / max(gridSize - 1.0, float2(1.0));
@@ -363,11 +397,15 @@ class LiquidGlassView @JvmOverloads constructor(
                 float dy = float(heightAt(uv + float2(0.0, texel.y)) - heightAt(uv - float2(0.0, texel.y)));
                 float2 normal = float2(dx, dy) * 2.0;
 
-                float2 edgeVector = uv - 0.5;
-                float edgeDistance = length(edgeVector * 2.0);
-                float edgeBend = smoothstep(0.55, 1.0, edgeDistance);
-                float2 radial = edgeVector / max(length(edgeVector), 0.001);
-                float2 offset = normal * refraction + radial * edgeBend * refraction * 0.38;
+                float insideDistance = max(-roundedBoxSdf(p), 0.0);
+                float rimWidth = clamp(min(size.x, size.y) * 0.075, 14.0, 38.0);
+                float rimCoordinate = clamp(insideDistance / rimWidth, 0.0, 1.0);
+                float rim = 1.0 - smoothstep(0.0, 1.0, rimCoordinate);
+                float2 boundaryNormal = edgeNormal(p);
+                float lensBand = exp(-pow((rimCoordinate - 0.30) * 2.9, 2.0));
+                float edgePower = mix(0.32, 0.22, regularity);
+                float physicsPower = mix(0.32, 0.22, regularity);
+                float2 offset = normal * refraction * physicsPower + boundaryNormal * lensBand * refraction * edgePower;
                 float2 source = sceneOrigin + p + offset;
 
                 half4 base = backdrop.eval(sceneOrigin + p);
@@ -379,19 +417,36 @@ class LiquidGlassView @JvmOverloads constructor(
                 half4 b4 = backdrop.eval(source - float2(0.0, materialBlur));
                 half3 blurred = (b0.rgb * 2.0 + b1.rgb + b2.rgb + b3.rgb + b4.rgb) / 6.0;
 
-                half red = backdrop.eval(source + normal * dispersion).r;
-                half blue = backdrop.eval(source - normal * dispersion).b;
+                float2 chromaNormal = normal + boundaryNormal * rim * 0.42;
+                half red = backdrop.eval(source + chromaNormal * dispersion).r;
+                half blue = backdrop.eval(source - chromaNormal * dispersion).b;
                 half3 refracted = half3(red, blurred.g, blue);
+
+                float reflectionDepth = rimWidth * mix(0.55, 0.72, regularity);
+                half3 internalReflection = backdrop.eval(sceneOrigin + p - boundaryNormal * reflectionDepth).rgb;
+                float reflectionBand = pow(rim, 2.2) * mix(0.13, 0.075, regularity);
+                refracted = mix(refracted, internalReflection, half(reflectionBand));
 
                 float3 surfaceNormal = normalize(float3(-normal.x * 3.0, -normal.y * 3.0, 1.0));
                 float specular = pow(max(dot(surfaceNormal, normalize(float3(-0.45, -0.55, 1.0))), 0.0), 22.0);
-                float fresnel = pow(clamp(edgeDistance, 0.0, 1.0), 3.0);
+                float directionalEdge = dot(boundaryNormal, normalize(float2(-0.65, -0.75)));
+                float outerLip = exp(-insideDistance / max(rimWidth * 0.13, 1.0));
+                float innerCaustic = exp(-pow((rimCoordinate - 0.48) / 0.16, 2.0));
+                float edgeHighlight = outerLip * max(directionalEdge * 0.5 + 0.5, 0.0);
+                float edgeShadow = outerLip * max(-directionalEdge, 0.0);
                 float shimmerPosition = fract(time * 0.55) * 2.4 - 0.7;
                 float shimmer = exp(-pow((uv.x + uv.y * 0.35) - shimmerPosition, 2.0) * 75.0) * pressProgress;
                 float schemeLift = appearance * mix(0.025, 0.055, regularity);
                 float materialTint = tint.a * mix(0.42, 1.0, regularity);
                 half3 glass = mix(refracted, half3(tint.rgb), half(materialTint));
-                glass += half3(schemeLift + specular * 0.28 + fresnel * mix(0.16, 0.1, regularity) + shimmer * 0.24);
+                glass += half3(
+                    schemeLift +
+                    specular * 0.24 +
+                    edgeHighlight * mix(0.22, 0.15, regularity) +
+                    innerCaustic * mix(0.075, 0.045, regularity) +
+                    shimmer * 0.24
+                );
+                glass -= half3(edgeShadow * mix(0.08, 0.12, regularity));
                 float opticalAmount = effectAmount * mix(0.72, 1.0, regularity) * materialization;
                 glass = mix(base.rgb, glass, half(opticalAmount));
                 return half4(glass, 1.0);
