@@ -16,5 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "liquid-glass-react-native-android"
 include(":liquid-glass-core")
+include(":liquid-glass-view")
 include(":sample-android")
-
