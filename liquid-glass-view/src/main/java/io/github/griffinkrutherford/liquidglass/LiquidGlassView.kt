@@ -55,11 +55,11 @@ class LiquidGlassView @JvmOverloads constructor(
     var dispersion = dp(2.4f)
         set(value) { field = value.coerceIn(0f, dp(12f)); invalidate() }
     var indexOfRefraction = 1.47f
-        set(value) { field = value.coerceIn(1.01f, 2.2f); invalidate() }
+        set(value) { field = value.coerceIn(1.01f, 3f); invalidate() }
     var bevelDepth = dp(22f)
         set(value) { field = value.coerceIn(dp(2f), dp(48f)); invalidate() }
     var baseThickness = dp(6f)
-        set(value) { field = value.coerceIn(0f, dp(24f)); invalidate() }
+        set(value) { field = value.coerceIn(0f, dp(64f)); invalidate() }
     var blurRadius = dp(2.2f)
         set(value) { field = value.coerceIn(0f, dp(12f)); invalidate() }
     var effectAmount = 0.96f
@@ -418,10 +418,16 @@ class LiquidGlassView @JvmOverloads constructor(
             }
 
             float2 refractedRayOffset(float2 slope, float opticalHeight, float ior, float gain) {
-                float refractionPower = 1.0 - 1.0 / max(ior, 1.001);
+                float3 normal = normalize(float3(-slope.x, -slope.y, 1.0));
+                float3 incident = float3(0.0, 0.0, -1.0);
+                float eta = 1.0 / max(ior, 1.001);
+                float incidentCosine = dot(normal, incident);
+                float discriminant = max(1.0 - eta * eta * (1.0 - incidentCosine * incidentCosine), 0.0);
+                float3 transmitted = eta * incident -
+                    (eta * incidentCosine + sqrt(discriminant)) * normal;
                 float pathLength = baseThickness + opticalHeight * 2.0;
-                float2 result = slope * refractionPower * pathLength * gain;
-                float limit = refraction * 0.72;
+                float2 result = transmitted.xy / max(abs(transmitted.z), 0.08) * pathLength * gain;
+                float limit = refraction * mix(0.86, 1.32, clamp(baseThickness / max(size.y, 1.0), 0.0, 1.0));
                 float magnitude = length(result);
                 return result * min(1.0, limit / max(magnitude, 0.001));
             }

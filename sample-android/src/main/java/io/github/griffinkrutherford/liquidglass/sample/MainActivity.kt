@@ -72,7 +72,7 @@ class MainActivity : Activity() {
         scene.addView(thicknessLabel, margins(24, 668))
         scene.addView(
             SeekBar(this).apply {
-                max = 240
+                max = 640
                 progress = 80
                 progressTintList = ColorStateList.valueOf(Color.rgb(174, 154, 255))
                 progressBackgroundTintList = ColorStateList.valueOf(Color.argb(105, 255, 255, 255))
