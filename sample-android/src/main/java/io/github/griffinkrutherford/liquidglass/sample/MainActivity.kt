@@ -1,9 +1,11 @@
 package io.github.griffinkrutherford.liquidglass.sample
 
 import android.app.Activity
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.view.ViewGroup
+import android.widget.SeekBar
 import android.widget.TextView
 import io.github.griffinkrutherford.liquidglass.LiquidGlassEffect
 import io.github.griffinkrutherford.liquidglass.LiquidGlassScene
@@ -65,6 +67,34 @@ class MainActivity : Activity() {
             leftMargin = dp(24)
             topMargin = dp(278)
         })
+
+        val thicknessLabel = label("OPTICAL THICKNESS  •  8.0", 11f, Color.WHITE)
+        scene.addView(thicknessLabel, margins(24, 668))
+        scene.addView(
+            SeekBar(this).apply {
+                max = 240
+                progress = 80
+                progressTintList = ColorStateList.valueOf(Color.rgb(174, 154, 255))
+                progressBackgroundTintList = ColorStateList.valueOf(Color.argb(105, 255, 255, 255))
+                thumbTintList = ColorStateList.valueOf(Color.rgb(174, 154, 255))
+                contentDescription = "Glass optical thickness"
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                        val thickness = progress / 10f
+                        card.baseThickness = dp(thickness).toFloat()
+                        thicknessLabel.text = "OPTICAL THICKNESS  •  %.1f".format(thickness)
+                    }
+
+                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
+                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+                })
+            },
+            ViewGroup.MarginLayoutParams(resources.displayMetrics.widthPixels - dp(48), dp(44)).apply {
+                leftMargin = dp(24)
+                topMargin = dp(687)
+            },
+        )
 
         setContentView(scene)
     }

@@ -142,7 +142,6 @@ class LiquidGlassView @JvmOverloads constructor(
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         if (width > 0 && height > 0) {
             membrane.resize(width.toFloat(), height.toFloat())
-            membrane.applyImpulse(width * 0.52f, height * 0.42f, minOf(width, height) * 0.28f, 4f)
         }
     }
 
@@ -260,7 +259,6 @@ class LiquidGlassView @JvmOverloads constructor(
                 dragStartTranslationX = translationX
                 dragStartTranslationY = translationY
                 hasDragged = false
-                applyImpulse(event.x, event.y, 5.2f)
                 lastTouchX = event.x
                 lastTouchY = event.y
                 return true
@@ -278,7 +276,6 @@ class LiquidGlassView @JvmOverloads constructor(
                 return true
             }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                applyImpulse(event.x, event.y, -2.4f)
                 if (!hasDragged && event.actionMasked == MotionEvent.ACTION_UP) performClick()
                 return true
             }
