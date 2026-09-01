@@ -33,6 +33,21 @@ class FixedTimestepRunner(
         return steps
     }
 
+    /**
+     * Steps only while the simulation has energy left, discarding accumulated time once it settles.
+     * Returns the number of fixed steps executed.
+     */
+    fun advanceIfActive(elapsedSeconds: Float): Int {
+        if (simulation.isAtRest()) {
+            accumulator = 0f
+            return 0
+        }
+        return advance(elapsedSeconds)
+    }
+
+    /** True when the underlying simulation has settled and stepping it would be wasted work. */
+    fun isAtRest(): Boolean = simulation.isAtRest()
+
     fun reset() {
         accumulator = 0f
         simulation.reset()

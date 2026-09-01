@@ -1,6 +1,8 @@
 package com.griffinkrutherford.liquidglass.core
 
+import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.max
 import kotlin.math.sqrt
 
 /**
@@ -15,6 +17,7 @@ class LiquidMembrane(
     private val acceleration = FloatArray(displacement.size)
     private var width = 1f
     private var height = 1f
+    private var settled = true
 
     override fun resize(width: Float, height: Float) {
         require(width > 0f && width.isFinite() && height > 0f && height.isFinite())
@@ -39,6 +42,7 @@ class LiquidMembrane(
                 }
             }
         }
+        if (safeStrength != 0f) settled = false
     }
 
     override fun step(fixedDeltaSeconds: Float) {
@@ -59,14 +63,22 @@ class LiquidMembrane(
 
         // Exponential damping is timestep-consistent and cannot reverse velocity.
         val dampingFactor = exp(-config.damping * dt)
+        var peakVelocity = 0f
+        var peakDisplacement = 0f
         for (row in 1 until rows - 1) {
             for (column in 1 until columns - 1) {
                 val i = index(column, row)
-                velocity[i] = (velocity[i] + acceleration[i] * dt) * dampingFactor
-                displacement[i] = (displacement[i] + velocity[i] * dt)
+                val nextVelocity = (velocity[i] + acceleration[i] * dt) * dampingFactor
+                velocity[i] = nextVelocity
+                val nextDisplacement = (displacement[i] + nextVelocity * dt)
                     .coerceIn(-config.maxDisplacement, config.maxDisplacement)
+                displacement[i] = nextDisplacement
+                peakVelocity = max(peakVelocity, abs(nextVelocity))
+                peakDisplacement = max(peakDisplacement, abs(nextDisplacement))
             }
         }
+        settled = peakDisplacement <= config.maxDisplacement * REST_DISPLACEMENT_EPSILON &&
+            peakVelocity <= config.maxDisplacement * REST_VELOCITY_EPSILON
     }
 
     override fun snapshot(): SurfaceSnapshot = SurfaceSnapshot(
@@ -82,9 +94,23 @@ class LiquidMembrane(
         displacement.fill(0f)
         velocity.fill(0f)
         acceleration.fill(0f)
+        settled = true
     }
 
-    internal fun maxAbsoluteDisplacement(): Float = displacement.maxOf { kotlin.math.abs(it) }
+    override fun isAtRest(): Boolean = settled
+
+    /** Copies the displacement field into a caller-owned array, avoiding per-frame allocation. */
+    fun copyDisplacementsInto(target: FloatArray) {
+        require(target.size == displacement.size) { "Target must hold columns * rows values" }
+        displacement.copyInto(target)
+    }
+
+    internal fun maxAbsoluteDisplacement(): Float = displacement.maxOf { abs(it) }
 
     private fun index(column: Int, row: Int): Int = row * config.columns + column
+
+    private companion object {
+        const val REST_DISPLACEMENT_EPSILON = 1e-4f
+        const val REST_VELOCITY_EPSILON = 1e-3f
+    }
 }

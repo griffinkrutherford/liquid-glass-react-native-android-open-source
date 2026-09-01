@@ -2,7 +2,10 @@ package io.github.griffinkrutherford.liquidglass
 
 import android.annotation.TargetApi
 import android.animation.ValueAnimator
+import android.content.ComponentCallbacks2
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
@@ -13,7 +16,9 @@ import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
 import android.util.AttributeSet
+import android.util.Log
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
 import android.view.animation.DecelerateInterpolator
 import com.griffinkrutherford.liquidglass.core.FixedTimestepRunner
@@ -32,7 +37,13 @@ class LiquidGlassView @JvmOverloads constructor(
         set(value) {
             if (field == value) return
             field = value
+            // The first value is the mount state, not a transition. React Native always sends a
+            // concrete effect, so a preset resolving to anything but REGULAR would otherwise
+            // animate in from the native default on first mount.
+            val isInitial = !hasAppliedEffect
+            hasAppliedEffect = true
             animateMaterialChange(
+                instant = isInitial,
                 targetMaterialization = if (value == LiquidGlassEffect.NONE) 0f else 1f,
                 targetRegularity = when (value) {
                     LiquidGlassEffect.CLEAR -> 0f
@@ -54,8 +65,9 @@ class LiquidGlassView @JvmOverloads constructor(
         set(value) { field = value.coerceAtLeast(0f); invalidate() }
     var refractionStrength = dp(24f)
         set(value) { field = value.coerceIn(0f, dp(80f)); invalidate() }
-    var dispersion = dp(2.4f)
-        set(value) { field = value.coerceIn(0f, dp(12f)); invalidate() }
+    /** Chromatic dispersion as a dimensionless index-of-refraction split, not a dp length. */
+    var dispersion = 2.4f
+        set(value) { field = value.coerceIn(0f, 12f); invalidate() }
     var indexOfRefraction = 1.47f
         set(value) { field = value.coerceIn(1.01f, 3f); invalidate() }
     var bevelDepth = dp(22f)
@@ -81,16 +93,18 @@ class LiquidGlassView @JvmOverloads constructor(
         strokeWidth = dp(1.35f)
     }
     private val normalPixels = IntArray(membrane.config.columns * membrane.config.rows)
-    private val normalBitmap = Bitmap.createBitmap(
-        membrane.config.columns,
-        membrane.config.rows,
-        Bitmap.Config.ARGB_8888,
-    )
+    private val displacements = FloatArray(normalPixels.size)
+    private var normalBitmap: Bitmap? = null
+    private var normalMapDirty = true
     private var sceneBackdrop: Bitmap? = null
+    private var scene: LiquidGlassScene? = null
+    private var suppressedForCapture = false
     private var runtimeShader: RuntimeShader? = null
     private var backdropInput: BitmapShader? = null
     private var backdropInputBitmap: Bitmap? = null
     private var heightInput: BitmapShader? = null
+    private var fillGradient: LinearGradient? = null
+    private var borderGradient: LinearGradient? = null
     private var previousFrameNanos = 0L
     private var lastTouchX = Float.NaN
     private var lastTouchY = Float.NaN
@@ -104,15 +118,67 @@ class LiquidGlassView @JvmOverloads constructor(
     private var frostiness = 0f
     private var darkness = 0f
     private var materialAnimator: ValueAnimator? = null
+    private var hasAppliedEffect = false
+    private val memoryCallbacks = object : ComponentCallbacks2 {
+        override fun onConfigurationChanged(newConfig: Configuration) = Unit
+
+        @Deprecated("Deprecated in Java")
+        override fun onLowMemory() = releaseRenderResources()
+
+        override fun onTrimMemory(level: Int) {
+            if (level >= ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN) releaseRenderResources()
+        }
+    }
 
     init {
         setWillNotDraw(false)
         setLayerType(LAYER_TYPE_HARDWARE, null)
-        if (Build.VERSION.SDK_INT >= 33) runtimeShader = RuntimeShader(GLASS_SHADER)
     }
 
+    /**
+     * Adopts the scene capture as the sampled backdrop. The scene owns the bitmap; this view only
+     * borrows it until [clearSceneBackdrop] is called.
+     */
     internal fun setSceneBackdrop(bitmap: Bitmap) {
-        sceneBackdrop = bitmap
+        if (bitmap.isRecycled) {
+            clearSceneBackdrop()
+            return
+        }
+        if (sceneBackdrop !== bitmap) {
+            sceneBackdrop = bitmap
+            backdropInput = null
+            backdropInputBitmap = null
+        }
+        invalidate()
+    }
+
+    /** Drops every reference to the scene bitmap so the scene can recycle it safely. */
+    internal fun clearSceneBackdrop() {
+        sceneBackdrop = null
+        backdropInput = null
+        backdropInputBitmap = null
+    }
+
+    /** Hides this view from the scene backdrop capture pass so glass never samples itself. */
+    internal fun setSuppressedForCapture(suppressed: Boolean) {
+        suppressedForCapture = suppressed
+    }
+
+    override fun draw(canvas: Canvas) {
+        if (suppressedForCapture) return
+        super.draw(canvas)
+    }
+
+    override fun setTranslationX(value: Float) {
+        val moved = value != getTranslationX()
+        super.setTranslationX(value)
+        if (moved) invalidate()
+    }
+
+    override fun setTranslationY(value: Float) {
+        val moved = value != getTranslationY()
+        super.setTranslationY(value)
+        if (moved) invalidate()
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -134,6 +200,7 @@ class LiquidGlassView @JvmOverloads constructor(
     override fun checkLayoutParams(params: LayoutParams?): Boolean = params is MarginLayoutParams
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        if (changed) invalidate()
         if (!managesChildLayout) return
         for (index in 0 until childCount) {
             val child = getChildAt(index)
@@ -145,42 +212,114 @@ class LiquidGlassView @JvmOverloads constructor(
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        fillGradient = null
+        borderGradient = null
         if (width > 0 && height > 0) {
             membrane.resize(width.toFloat(), height.toFloat())
         }
+        invalidate()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        context.applicationContext.registerComponentCallbacks(memoryCallbacks)
+        val host = findSceneAncestor()
+        scene = host
+        if (host != null) {
+            host.registerGlassView(this)
+        } else if (isDebuggable()) {
+            Log.w(
+                TAG,
+                "LiquidGlassView has no LiquidGlassScene ancestor; falling back to a non-refracting render.",
+            )
+        }
+        previousFrameNanos = 0L
+        normalMapDirty = true
+        invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        context.applicationContext.unregisterComponentCallbacks(memoryCallbacks)
+        scene?.unregisterGlassView(this)
+        scene = null
+        suppressedForCapture = false
+        previousFrameNanos = 0L
+        materialAnimator?.cancel()
+        clearSceneBackdrop()
+        releaseRenderResources()
+        super.onDetachedFromWindow()
     }
 
     override fun onDraw(canvas: Canvas) {
+        if (width <= 0 || height <= 0) return
         val now = System.nanoTime()
         if (previousFrameNanos != 0L) {
-            runner.advance(((now - previousFrameNanos) / 1_000_000_000.0).toFloat().coerceAtMost(0.05f))
+            val elapsed = ((now - previousFrameNanos) / 1_000_000_000.0).toFloat().coerceAtMost(0.05f)
+            if (runner.advanceIfActive(elapsed) > 0) normalMapDirty = true
         }
         previousFrameNanos = now
 
-        val backdrop = sceneBackdrop
-        val shader = runtimeShader
-        if (Build.VERSION.SDK_INT >= 33 && shader != null && backdrop != null && canvas.isHardwareAccelerated) {
+        val backdrop = sceneBackdrop?.takeUnless { it.isRecycled }
+        val shader = if (Build.VERSION.SDK_INT >= 33) ensureRuntimeShader() else null
+        if (shader != null && backdrop != null && canvas.isHardwareAccelerated) {
             drawRuntimeGlass(canvas, shader, backdrop)
         } else {
             drawFallbackGlass(canvas)
         }
         drawBorder(canvas)
-        if (isAttachedToWindow && visibility == VISIBLE) postInvalidateOnAnimation()
+        if (hasPendingWork()) postInvalidateOnAnimation() else previousFrameNanos = 0L
+    }
+
+    private fun hasPendingWork(): Boolean =
+        isAttachedToWindow && visibility == VISIBLE &&
+            (!runner.isAtRest() || materialAnimator?.isRunning == true)
+
+    @TargetApi(33)
+    private fun ensureRuntimeShader(): RuntimeShader {
+        val existing = runtimeShader
+        if (existing != null) return existing
+        val created = RuntimeShader(GLASS_SHADER)
+        runtimeShader = created
+        return created
+    }
+
+    private fun ensureNormalBitmap(): Bitmap {
+        val existing = normalBitmap
+        if (existing != null && !existing.isRecycled) return existing
+        val created = Bitmap.createBitmap(
+            membrane.config.columns,
+            membrane.config.rows,
+            Bitmap.Config.ARGB_8888,
+        )
+        normalBitmap = created
+        heightInput = null
+        normalMapDirty = true
+        return created
+    }
+
+    private fun releaseRenderResources() {
+        heightInput = null
+        runtimeShader = null
+        normalBitmap?.recycle()
+        normalBitmap = null
+        normalMapDirty = true
     }
 
     @TargetApi(33)
     private fun drawRuntimeGlass(canvas: Canvas, shader: RuntimeShader, backdrop: Bitmap) {
-        updateNormalMap()
+        val heightMap = ensureNormalBitmap()
+        if (normalMapDirty) updateNormalMap(heightMap)
         if (backdropInputBitmap !== backdrop) {
             backdropInputBitmap = backdrop
             backdropInput = filteredShader(backdrop)
         }
-        if (heightInput == null) heightInput = filteredShader(normalBitmap)
+        if (heightInput == null) heightInput = filteredShader(heightMap)
         shader.setInputShader("backdrop", requireNotNull(backdropInput))
         shader.setInputShader("heightMap", requireNotNull(heightInput))
         shader.setFloatUniform("size", width.toFloat(), height.toFloat())
-        shader.setFloatUniform("sceneOrigin", x, y)
-        shader.setFloatUniform("gridSize", normalBitmap.width.toFloat(), normalBitmap.height.toFloat())
+        shader.setFloatUniform("sceneOrigin", sceneOriginX(), sceneOriginY())
+        shader.setFloatUniform("gridSize", heightMap.width.toFloat(), heightMap.height.toFloat())
         shader.setFloatUniform("cornerRadius", cornerRadius)
         shader.setFloatUniform("refraction", refractionStrength)
         shader.setFloatUniform("dispersion", dispersion)
@@ -206,17 +345,18 @@ class LiquidGlassView @JvmOverloads constructor(
         paint.shader = null
     }
 
-    private fun updateNormalMap() {
-        val state = membrane.snapshot()
-        for (row in 0 until state.rows) {
-            for (column in 0 until state.columns) {
-                val normalized = (state.displacement(column, row) / membrane.config.maxDisplacement * 0.5f + 0.5f)
-                    .coerceIn(0f, 1f)
-                val value = (normalized * 255f).toInt()
-                normalPixels[row * state.columns + column] = Color.rgb(value, value, value)
-            }
+    private fun updateNormalMap(target: Bitmap) {
+        val columns = membrane.config.columns
+        val rows = membrane.config.rows
+        membrane.copyDisplacementsInto(displacements)
+        for (index in normalPixels.indices) {
+            val normalized = (displacements[index] / membrane.config.maxDisplacement * 0.5f + 0.5f)
+                .coerceIn(0f, 1f)
+            val value = (normalized * 255f).toInt()
+            normalPixels[index] = Color.rgb(value, value, value)
         }
-        normalBitmap.setPixels(normalPixels, 0, state.columns, 0, 0, state.columns, state.rows)
+        target.setPixels(normalPixels, 0, columns, 0, 0, columns, rows)
+        normalMapDirty = false
     }
 
     @TargetApi(33)
@@ -227,12 +367,12 @@ class LiquidGlassView @JvmOverloads constructor(
 
     private fun drawFallbackGlass(canvas: Canvas) {
         if (materialization <= 0.001f) return
-        paint.shader = LinearGradient(
+        paint.shader = fillGradient ?: LinearGradient(
             0f, 0f, width.toFloat(), height.toFloat(),
             intArrayOf(Color.argb(125, 224, 245, 255), Color.argb(70, 126, 196, 232), Color.argb(105, 216, 242, 255)),
             null,
             Shader.TileMode.CLAMP,
-        )
+        ).also { fillGradient = it }
         paint.alpha = (materialization * if (effect == LiquidGlassEffect.CLEAR) 150 else 220).toInt()
         canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), cornerRadius, cornerRadius, paint)
         paint.alpha = 255
@@ -241,12 +381,12 @@ class LiquidGlassView @JvmOverloads constructor(
 
     private fun drawBorder(canvas: Canvas) {
         if (materialization <= 0.001f) return
-        borderPaint.shader = LinearGradient(
+        borderPaint.shader = borderGradient ?: LinearGradient(
             0f, 0f, width.toFloat(), height.toFloat(),
             intArrayOf(Color.argb(235, 255, 255, 255), Color.argb(45, 255, 255, 255), Color.argb(170, 168, 220, 255)),
             null,
             Shader.TileMode.CLAMP,
-        )
+        ).also { borderGradient = it }
         val inset = borderPaint.strokeWidth / 2f
         borderPaint.alpha = (materialization * 255).toInt()
         canvas.drawRoundRect(inset, inset, width - inset, height - inset, cornerRadius, cornerRadius, borderPaint)
@@ -261,8 +401,8 @@ class LiquidGlassView @JvmOverloads constructor(
                 parent.requestDisallowInterceptTouchEvent(true)
                 dragStartRawX = event.rawX
                 dragStartRawY = event.rawY
-                dragStartTranslationX = translationX
-                dragStartTranslationY = translationY
+                dragStartTranslationX = getTranslationX()
+                dragStartTranslationY = getTranslationY()
                 hasDragged = false
                 lastTouchX = event.x
                 lastTouchY = event.y
@@ -293,15 +433,6 @@ class LiquidGlassView @JvmOverloads constructor(
         return true
     }
 
-    override fun onDetachedFromWindow() {
-        previousFrameNanos = 0L
-        sceneBackdrop = null
-        backdropInput = null
-        backdropInputBitmap = null
-        materialAnimator?.cancel()
-        super.onDetachedFromWindow()
-    }
-
     private fun applyImpulse(x: Float, y: Float, strength: Float) {
         membrane.applyImpulse(
             x.coerceIn(0f, width.toFloat()),
@@ -309,26 +440,60 @@ class LiquidGlassView @JvmOverloads constructor(
             minOf(width, height) * 0.24f,
             strength,
         )
+        invalidate()
     }
 
     private fun updateDragPosition(event: MotionEvent) {
         val container = parent as? ViewGroup ?: return
         val targetX = dragStartTranslationX + event.rawX - dragStartRawX
         val targetY = dragStartTranslationY + event.rawY - dragStartRawY
-        translationX = targetX.coerceIn(-left.toFloat(), (container.width - right).toFloat())
-        translationY = targetY.coerceIn(-top.toFloat(), (container.height - bottom).toFloat())
+        setTranslationX(targetX.coerceIn(-left.toFloat(), (container.width - right).toFloat()))
+        setTranslationY(targetY.coerceIn(-top.toFloat(), (container.height - bottom).toFloat()))
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density
+
+    private fun findSceneAncestor(): LiquidGlassScene? {
+        var ancestor = parent
+        while (ancestor is View) {
+            if (ancestor is LiquidGlassScene) return ancestor
+            ancestor = ancestor.parent
+        }
+        return null
+    }
+
+    private fun sceneOriginX(): Float {
+        var origin = x
+        var ancestor = parent
+        while (ancestor is View && ancestor !== scene) {
+            origin += ancestor.x - ancestor.scrollX
+            ancestor = ancestor.parent
+        }
+        return origin
+    }
+
+    private fun sceneOriginY(): Float {
+        var origin = y
+        var ancestor = parent
+        while (ancestor is View && ancestor !== scene) {
+            origin += ancestor.y - ancestor.scrollY
+            ancestor = ancestor.parent
+        }
+        return origin
+    }
+
+    private fun isDebuggable(): Boolean =
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
 
     private fun animateMaterialChange(
         targetMaterialization: Float,
         targetRegularity: Float,
         targetFrostiness: Float,
         targetDarkness: Float,
+        instant: Boolean = false,
     ) {
         materialAnimator?.cancel()
-        if (!animated || animationDurationMillis == 0L) {
+        if (instant || !animated || animationDurationMillis == 0L) {
             materialization = targetMaterialization
             regularity = targetRegularity
             frostiness = targetFrostiness
@@ -367,6 +532,7 @@ class LiquidGlassView @JvmOverloads constructor(
     }
 
     private companion object {
+        const val TAG = "LiquidGlassView"
         const val GLASS_SHADER = """
             uniform shader backdrop;
             uniform shader heightMap;
