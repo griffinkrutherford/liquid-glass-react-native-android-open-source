@@ -74,6 +74,27 @@ export function warnOnInvalidProps(props: LiquidGlassStyleProps): void {
     }
   }
 
+  const exclusion = props.refractionExclusion;
+  if (exclusion !== undefined) {
+    if (exclusion.shape !== 'circle') {
+      warnOnce('exclusion:shape', '`refractionExclusion.shape` must be "circle".');
+    }
+    for (const [name, value, min, max, unit] of [
+      ['centerX', exclusion.centerX, 0, 1, 'normalized'],
+      ['centerY', exclusion.centerY, 0, 1, 'normalized'],
+      ['radius', exclusion.radius, 0, Number.POSITIVE_INFINITY, 'dp'],
+      ['feather', exclusion.feather ?? 0, 0, Number.POSITIVE_INFINITY, 'dp'],
+    ] as const) {
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+        const upper = max === Number.POSITIVE_INFINITY ? '∞' : max;
+        warnOnce(
+          `exclusion:${name}`,
+          `\`refractionExclusion.${name}\` must be ${min}–${upper} ${unit}; received ${String(value)}.`,
+        );
+      }
+    }
+  }
+
   if (props.material !== undefined && !(props.material in LIQUID_GLASS_MATERIALS)) {
     warnOnce(
       `material:${String(props.material)}`,

@@ -21,7 +21,11 @@ import {LIQUID_GLASS_DEFAULTS, LIQUID_GLASS_MATERIALS} from '../materials';
 const ORIGINAL_OS = Platform.OS;
 
 /** Every prop that belongs to the glass and must never appear on a fallback `View`. */
-const GLASS_ONLY_PROPS = [...Object.keys(LIQUID_GLASS_DEFAULTS), 'material'];
+const GLASS_ONLY_PROPS = [
+  ...Object.keys(LIQUID_GLASS_DEFAULTS),
+  'material',
+  'refractionExclusion',
+];
 
 function setPlatform(os: 'android' | 'ios' | 'web'): void {
   (Platform as unknown as {OS: string}).OS = os;
@@ -89,6 +93,38 @@ describe('LiquidGlassView on Android', () => {
     expect(StyleSheet.flatten(host.props.style)).toMatchObject(style);
   });
 
+  it('maps a circular exclusion to codegen-safe native primitives', () => {
+    const host = renderHost(
+      <LiquidGlassView
+        refractionExclusion={{
+          shape: 'circle',
+          centerX: 0.4,
+          centerY: 0.6,
+          radius: 44,
+          feather: 8,
+        }}
+      />,
+    );
+    expect(host.props).toMatchObject({
+      exclusionEnabled: true,
+      exclusionCenterX: 0.4,
+      exclusionCenterY: 0.6,
+      exclusionRadius: 44,
+      exclusionFeather: 8,
+    });
+    expect(host.props).not.toHaveProperty('refractionExclusion');
+  });
+
+  it('disables exclusion primitives when the prop is absent', () => {
+    expect(renderHost(<LiquidGlassView />).props).toMatchObject({
+      exclusionEnabled: false,
+      exclusionCenterX: 0.5,
+      exclusionCenterY: 0.5,
+      exclusionRadius: 0,
+      exclusionFeather: 0,
+    });
+  });
+
   it('does not turn cornerRadius into a borderRadius style — native draws the SDF corners', () => {
     const host = renderHost(<LiquidGlassView cornerRadius={12} />);
     expect(host.props.cornerRadius).toBe(12);
@@ -151,6 +187,7 @@ describe.each(['ios', 'web'] as const)('LiquidGlassView fallback on %s', (os) =>
         effectAmount={0.5}
         tintColor="#123456"
         tintAmount={0.2}
+        refractionExclusion={{shape: 'circle', centerX: 0.5, centerY: 0.5, radius: 44}}
         interactive
         draggable
         animated={false}

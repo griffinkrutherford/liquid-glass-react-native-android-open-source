@@ -89,6 +89,13 @@ const publicDocDefaults = parseDocumentedDefaults(PUBLIC_BODY);
 /** Every prop declared in the Fabric spec (`WithDefault` or not). */
 const specProps = [...SPEC_BODY.matchAll(/^\s*(\w+)\?:/gm)].map((m) => m[1]!);
 const defaultKeys = Object.keys(LIQUID_GLASS_DEFAULTS);
+const NATIVE_ONLY_DEFAULTS: Readonly<Record<string, unknown>> = {
+  exclusionEnabled: false,
+  exclusionCenterX: 0.5,
+  exclusionCenterY: 0.5,
+  exclusionRadius: 0,
+  exclusionFeather: 0,
+};
 
 describe('the parser itself found something to check', () => {
   it('found the spec props', () => {
@@ -104,7 +111,9 @@ describe('the parser itself found something to check', () => {
 
 describe('Fabric spec coverage', () => {
   it('declares exactly the props in LIQUID_GLASS_DEFAULTS', () => {
-    expect([...specProps].sort()).toEqual([...defaultKeys].sort());
+    expect([...specProps].sort()).toEqual(
+      [...defaultKeys, ...Object.keys(NATIVE_ONLY_DEFAULTS)].sort(),
+    );
   });
 
   it('never declares `material`, which is resolved in JavaScript', () => {
@@ -113,6 +122,13 @@ describe('Fabric spec coverage', () => {
 
   it('documents a default for every prop it declares', () => {
     expect([...specDocDefaults.keys()].sort()).toEqual([...specProps].sort());
+  });
+});
+
+describe.each(Object.entries(NATIVE_ONLY_DEFAULTS))('%s native exclusion primitive', (prop, expected) => {
+  it('keeps its codegen and documented defaults aligned', () => {
+    expect(codegenDefaults.get(prop)).toBe(expected);
+    expect(specDocDefaults.get(prop)).toBe(expected);
   });
 });
 
@@ -147,7 +163,11 @@ describe('public prop documentation', () => {
   it('documents a default for every public prop except `material`', () => {
     const publicProps = [...PUBLIC_BODY.matchAll(/^\s*(\w+)\?:/gm)].map((m) => m[1]!);
     expect([...publicDocDefaults.keys()].sort()).toEqual([...publicProps].sort());
-    expect(publicProps.sort()).toEqual([...defaultKeys, 'material'].sort());
+    expect(publicProps.sort()).toEqual([...defaultKeys, 'material', 'refractionExclusion'].sort());
+  });
+
+  it('documents refractionExclusion as opt-in', () => {
+    expect(publicDocDefaults.get('refractionExclusion')).toBe('undefined');
   });
 });
 

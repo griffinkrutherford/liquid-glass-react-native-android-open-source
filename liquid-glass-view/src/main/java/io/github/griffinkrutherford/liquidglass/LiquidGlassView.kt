@@ -82,6 +82,16 @@ class LiquidGlassView @JvmOverloads constructor(
         set(value) { field = value; invalidate() }
     var tintAmount = 0.11f
         set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+    var refractionExclusionEnabled = false
+        set(value) { field = value; invalidate() }
+    var refractionExclusionCenterX = 0.5f
+        set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+    var refractionExclusionCenterY = 0.5f
+        set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+    var refractionExclusionRadius = 0f
+        set(value) { field = value.coerceAtLeast(0f); invalidate() }
+    var refractionExclusionFeather = 0f
+        set(value) { field = value.coerceAtLeast(0f); invalidate() }
 
     private val membrane = LiquidMembrane(
         LiquidPhysicsConfig(columns = 25, rows = 25, stiffness = 42f, damping = 3.8f, viscosity = 22f),
@@ -334,6 +344,13 @@ class LiquidGlassView @JvmOverloads constructor(
         shader.setFloatUniform("materialization", materialization)
         shader.setFloatUniform("appearance", resolvedAppearance())
         shader.setFloatUniform(
+            "exclusion",
+            refractionExclusionCenterX,
+            refractionExclusionCenterY,
+            if (refractionExclusionEnabled) refractionExclusionRadius else 0f,
+            refractionExclusionFeather,
+        )
+        shader.setFloatUniform(
             "tint",
             Color.red(tintColor) / 255f,
             Color.green(tintColor) / 255f,
@@ -553,6 +570,8 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform float darkness;
             uniform float materialization;
             uniform float appearance;
+            // xy = normalized centre, z = radius px (zero disables), w = feather px.
+            uniform float4 exclusion;
 
             half heightAt(float2 uv) {
                 float2 coordinate = clamp(uv, float2(0.0), float2(1.0)) * (gridSize - 1.0);
@@ -629,6 +648,19 @@ class LiquidGlassView @JvmOverloads constructor(
                 float2 offsetRed = refractedRayOffset(surfaceSlope, opticalHeight, iorRed, opticalGain);
                 float2 offsetGreen = refractedRayOffset(surfaceSlope, opticalHeight, indexOfRefraction, opticalGain);
                 float2 offsetBlue = refractedRayOffset(surfaceSlope, opticalHeight, iorBlue, opticalGain);
+                float localRefraction = 1.0;
+                if (exclusion.z > 0.001) {
+                    float exclusionDistance = length(p - exclusion.xy * size);
+                    float exclusionInner = max(exclusion.z - exclusion.w, 0.0);
+                    float exclusionOuter = max(exclusion.z, exclusionInner + 0.001);
+                    float exclusion = 1.0 - smoothstep(
+                        exclusionInner, exclusionOuter, exclusionDistance
+                    );
+                    localRefraction = 1.0 - exclusion;
+                }
+                offsetRed *= localRefraction;
+                offsetGreen *= localRefraction;
+                offsetBlue *= localRefraction;
                 float2 sourceRed = sceneOrigin + p + offsetRed;
                 float2 sourceGreen = sceneOrigin + p + offsetGreen;
                 float2 sourceBlue = sceneOrigin + p + offsetBlue;
@@ -664,7 +696,11 @@ class LiquidGlassView @JvmOverloads constructor(
                 half3 internalReflection = backdrop.eval(
                     sceneOrigin + p - reflectionDirection * zRadius * mix(0.32, 0.46, regularity)
                 ).rgb;
-                refracted = mix(refracted, internalReflection, half(fresnel * mix(0.58, 0.42, regularity)));
+                refracted = mix(
+                    refracted,
+                    internalReflection,
+                    half(fresnel * mix(0.58, 0.42, regularity) * localRefraction)
+                );
 
                 float schemeLift = appearance * mix(0.025, 0.055, regularity);
                 float materialTint = tint.a * mix(0.42, 1.0, regularity) + frostiness * 0.12;

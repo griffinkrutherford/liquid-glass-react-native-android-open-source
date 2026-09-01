@@ -261,6 +261,31 @@ describe('warnOnInvalidProps — `effect` deprecation', () => {
   });
 });
 
+describe('warnOnInvalidProps — refraction exclusion', () => {
+  it('accepts a valid circular exclusion', () => {
+    warnOnInvalidProps({
+      refractionExclusion: {shape: 'circle', centerX: 0.5, centerY: 0.5, radius: 44, feather: 8},
+    });
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('warns for normalized centres outside the view', () => {
+    warnOnInvalidProps({
+      refractionExclusion: {shape: 'circle', centerX: -0.1, centerY: 1.1, radius: 44},
+    });
+    expect(messages()).toContain('centerX');
+    expect(messages()).toContain('centerY');
+  });
+
+  it('warns for negative radius and feather values', () => {
+    warnOnInvalidProps({
+      refractionExclusion: {shape: 'circle', centerX: 0.5, centerY: 0.5, radius: -1, feather: -2},
+    });
+    expect(messages()).toContain('radius');
+    expect(messages()).toContain('feather');
+  });
+});
+
 describe('warnMissingScene', () => {
   it('explains the consequence and the fix', () => {
     warnMissingScene();

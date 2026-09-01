@@ -47,6 +47,21 @@ class LiquidGlassShaderOptimizationTest {
         assertEquals(2, Regex("backdrop\\.eval").findAll(dispersionBranch).count())
     }
 
+    @Test
+    fun `exclusion scales displacement and internal reflection without replacing glass color`() {
+        assertTrue(shaderSource.contains("if (exclusion.z > 0.001)"))
+        assertTrue(shaderSource.contains("offsetRed *= localRefraction;"))
+        assertTrue(shaderSource.contains("offsetGreen *= localRefraction;"))
+        assertTrue(shaderSource.contains("offsetBlue *= localRefraction;"))
+        assertTrue(
+            shaderSource.contains(
+                "half(fresnel * mix(0.58, 0.42, regularity) * localRefraction)",
+            ),
+        )
+        assertTrue(shaderSource.contains("float materialTint ="))
+        assertTrue(shaderSource.contains("glass = mix(base.rgb, glass"))
+    }
+
     private fun weightedCross(
         center: FloatArray,
         right: FloatArray,

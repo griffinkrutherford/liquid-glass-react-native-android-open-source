@@ -51,6 +51,16 @@ export interface NativeProps extends ViewProps {
   tintAmount?: WithDefault<Float, 0.11>;
   /** Appearance used for the internal light response. @default 'system' */
   colorScheme?: WithDefault<'light' | 'dark' | 'system', 'system'>;
+  /** Whether the circular displacement exclusion is active. @default false */
+  exclusionEnabled?: WithDefault<boolean, false>;
+  /** Normalized horizontal exclusion centre, `0`–`1`. @default 0.5 */
+  exclusionCenterX?: WithDefault<Float, 0.5>;
+  /** Normalized vertical exclusion centre, `0`–`1`. @default 0.5 */
+  exclusionCenterY?: WithDefault<Float, 0.5>;
+  /** Circular exclusion radius, dp, `>= 0`. @default 0 */
+  exclusionRadius?: WithDefault<Float, 0>;
+  /** Feather width at the exclusion edge, dp, `>= 0`. @default 0 */
+  exclusionFeather?: WithDefault<Float, 0>;
 }
 
 export default codegenNativeComponent<NativeProps>(

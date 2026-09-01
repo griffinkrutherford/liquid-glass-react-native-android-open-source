@@ -25,6 +25,19 @@ export type LiquidGlassMaterial = 'crystal' | 'satin' | 'nocturne';
 /** Appearance used for the internal light-response term. `system` follows the Android UI mode. */
 export type LiquidGlassColorScheme = 'light' | 'dark' | 'system';
 
+/** A circular region where backdrop displacement fades out while the glass material remains. */
+export interface LiquidGlassRefractionExclusion {
+  shape: 'circle';
+  /** Horizontal centre normalized to the glass width (`0`–`1`). */
+  centerX: number;
+  /** Vertical centre normalized to the glass height (`0`–`1`). */
+  centerY: number;
+  /** Radius in dp. */
+  radius: number;
+  /** Width of the soft transition into full refraction, in dp. */
+  feather?: number;
+}
+
 /**
  * The optical parameters a {@link LiquidGlassMaterial} preset supplies.
  *
@@ -246,6 +259,14 @@ export interface LiquidGlassStyleProps {
    * Range: `0`–`1`.
    */
   tintAmount?: number;
+  /**
+   * Circular region where refraction, dispersion and displaced internal reflection fade to zero.
+   * Blur, tint, frost, border and highlights remain continuous through the region. The centre is
+   * normalized to the view bounds; `radius` and `feather` are in dp.
+   *
+   * @default undefined — no exclusion
+   */
+  refractionExclusion?: LiquidGlassRefractionExclusion;
   /**
    * Whether the view consumes touches so pointer movement can deform the liquid membrane.
    * A stationary tap never changes the optical surface.

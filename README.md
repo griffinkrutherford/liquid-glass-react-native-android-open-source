@@ -140,6 +140,24 @@ Every optical value a preset supplies can still be overridden per prop — an
 explicit prop always wins. Presets cover optics only, never geometry, behaviour,
 motion, or colour scheme. See [docs/materials.md](docs/materials.md).
 
+To keep background lines from bending beneath an overlapping button while preserving one
+continuous glass surface, add a feathered shader-level exclusion:
+
+```tsx
+<LiquidGlassView
+  refractionExclusion={{
+    shape: 'circle',
+    centerX: 0.5,
+    centerY: 0.5,
+    radius: 44,
+    feather: 8,
+  }}
+/>
+```
+
+This disables only displaced optics in the circle. Blur, tint, frost, borders and highlights
+remain continuous; no extra view or backdrop capture is created.
+
 The full prop list, with units, defaults, and ranges, is in
 [docs/props.md](docs/props.md). Dimension props are React Native
 density-independent units (dp); `indexOfRefraction`, `dispersion`,

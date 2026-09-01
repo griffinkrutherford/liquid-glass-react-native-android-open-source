@@ -19,6 +19,7 @@ export type {
   LiquidGlassEffect,
   LiquidGlassMaterial,
   LiquidGlassOpticalBundle,
+  LiquidGlassRefractionExclusion,
   LiquidGlassResolvedProps,
   LiquidGlassStyleProps,
 } from './materials';
@@ -82,6 +83,7 @@ export function LiquidGlassView(props: LiquidGlassViewProps) {
     effectAmount: _effectAmount,
     tintColor: _tintColor,
     tintAmount: _tintAmount,
+    refractionExclusion: _refractionExclusion,
     interactive: _interactive,
     draggable: _draggable,
     animated: _animated,
@@ -98,6 +100,8 @@ export function LiquidGlassView(props: LiquidGlassViewProps) {
   }
 
   const resolved = resolveLiquidGlassProps(props);
+  const exclusion = props.refractionExclusion;
+  const exclusionEnabled = exclusion?.shape === 'circle' && exclusion.radius > 0;
 
   if (Platform.OS !== 'android') {
     return (
@@ -108,7 +112,15 @@ export function LiquidGlassView(props: LiquidGlassViewProps) {
   }
 
   return (
-    <NativeLiquidGlassView {...viewProps} {...resolved} style={style}>
+    <NativeLiquidGlassView
+      {...viewProps}
+      {...resolved}
+      exclusionEnabled={exclusionEnabled}
+      exclusionCenterX={exclusion?.centerX ?? 0.5}
+      exclusionCenterY={exclusion?.centerY ?? 0.5}
+      exclusionRadius={exclusion?.radius ?? 0}
+      exclusionFeather={exclusion?.feather ?? 0}
+      style={style}>
       {children}
     </NativeLiquidGlassView>
   );

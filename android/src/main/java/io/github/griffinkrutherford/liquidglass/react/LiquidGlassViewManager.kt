@@ -112,6 +112,31 @@ class LiquidGlassViewManager :
         }
     }
 
+    @ReactProp(name = "exclusionEnabled", defaultBoolean = false)
+    override fun setExclusionEnabled(view: LiquidGlassView, value: Boolean) {
+        view.refractionExclusionEnabled = value
+    }
+
+    @ReactProp(name = "exclusionCenterX", defaultFloat = 0.5f)
+    override fun setExclusionCenterX(view: LiquidGlassView, value: Float) {
+        view.refractionExclusionCenterX = value
+    }
+
+    @ReactProp(name = "exclusionCenterY", defaultFloat = 0.5f)
+    override fun setExclusionCenterY(view: LiquidGlassView, value: Float) {
+        view.refractionExclusionCenterY = value
+    }
+
+    @ReactProp(name = "exclusionRadius", defaultFloat = 0f)
+    override fun setExclusionRadius(view: LiquidGlassView, value: Float) {
+        view.refractionExclusionRadius = dip(value)
+    }
+
+    @ReactProp(name = "exclusionFeather", defaultFloat = 0f)
+    override fun setExclusionFeather(view: LiquidGlassView, value: Float) {
+        view.refractionExclusionFeather = dip(value)
+    }
+
     private fun dip(value: Float): Float = PixelUtil.toPixelFromDIP(value)
 
     companion object {

@@ -8,7 +8,7 @@ its own.
 
 | Kind | Props | Unit |
 | --- | --- | --- |
-| Dimension | `cornerRadius`, `refractionStrength`, `bevelDepth`, `thickness`, `blurRadius` | React Native density-independent units (dp). Converted with `PixelUtil.toPixelFromDIP` in `LiquidGlassViewManager`. |
+| Dimension | `cornerRadius`, `refractionStrength`, `bevelDepth`, `thickness`, `blurRadius`, exclusion `radius`/`feather` | React Native density-independent units (dp). Converted with `PixelUtil.toPixelFromDIP` in `LiquidGlassViewManager`. |
 | Time | `animationDuration` | Milliseconds. |
 | Dimensionless | `indexOfRefraction`, `dispersion`, `effectAmount`, `tintAmount` | No unit, no density conversion. |
 | Colour | `tintColor` | Any React Native colour value. |
@@ -34,6 +34,7 @@ density.
 | `effectAmount` | `number` | dimensionless | `0.96` | `0`–`1` |
 | `tintColor` | `ColorValue` | — | `'#BEE5FF'` | any colour |
 | `tintAmount` | `number` | dimensionless | `0.11` | `0`–`1` |
+| `refractionExclusion` | circular exclusion object | mixed | `undefined` | see below |
 
 ## Geometry, behaviour, and motion props
 
@@ -124,6 +125,30 @@ either one bends the backdrop further, up to the `refractionStrength` limit.
 Blends between the untouched backdrop (`0`) and the fully refracted, tinted
 result (`1`). It is the cheapest way to soften the whole material without
 retuning individual parameters.
+
+### `refractionExclusion`
+
+Fades backdrop displacement, chromatic dispersion and displaced internal reflection to zero inside
+a circular region without painting over the material. Blur, tint, frost, border and highlights
+remain active, so an overlapping control does not look like it sits on a patched or separate pane.
+
+```tsx
+<LiquidGlassView
+  refractionExclusion={{
+    shape: 'circle',
+    centerX: 0.5,
+    centerY: 0.5,
+    radius: 44,
+    feather: 8,
+  }}
+/>
+```
+
+`centerX` and `centerY` are normalized to the glass bounds and clamped to `0`–`1`. `radius` and
+`feather` are dp values. A zero radius or an omitted prop disables the mask. A zero feather creates
+a hard boundary; positive values smoothly restore full refraction over the inner edge of the
+circle. Updating these values changes shader uniforms only—it does not rebuild the shader, create
+another glass view, or trigger another backdrop-capture pass.
 
 ### `interactive`
 
