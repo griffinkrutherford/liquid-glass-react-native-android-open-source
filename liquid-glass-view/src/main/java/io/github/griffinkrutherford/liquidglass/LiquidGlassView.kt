@@ -637,14 +637,21 @@ class LiquidGlassView @JvmOverloads constructor(
                 half4 b0 = backdrop.eval(sourceGreen);
                 float edgeSharpness = 1.0 - rim * 0.78;
                 float materialBlur = blurRadius * mix(0.48, edgeSharpness, regularity) * (1.0 + frostiness * 3.8);
-                half4 b1 = backdrop.eval(sourceGreen + float2(materialBlur, 0.0));
-                half4 b2 = backdrop.eval(sourceGreen - float2(materialBlur, 0.0));
-                half4 b3 = backdrop.eval(sourceGreen + float2(0.0, materialBlur));
-                half4 b4 = backdrop.eval(sourceGreen - float2(0.0, materialBlur));
-                half3 blurred = (b0.rgb * 2.0 + b1.rgb + b2.rgb + b3.rgb + b4.rgb) / 6.0;
+                half3 blurred = b0.rgb;
+                if (materialBlur > 0.0) {
+                    half4 b1 = backdrop.eval(sourceGreen + float2(materialBlur, 0.0));
+                    half4 b2 = backdrop.eval(sourceGreen - float2(materialBlur, 0.0));
+                    half4 b3 = backdrop.eval(sourceGreen + float2(0.0, materialBlur));
+                    half4 b4 = backdrop.eval(sourceGreen - float2(0.0, materialBlur));
+                    blurred = (b0.rgb * 2.0 + b1.rgb + b2.rgb + b3.rgb + b4.rgb) / 6.0;
+                }
 
-                half red = backdrop.eval(sourceRed).r;
-                half blue = backdrop.eval(sourceBlue).b;
+                half red = b0.r;
+                half blue = b0.b;
+                if (dispersion > 0.0) {
+                    red = backdrop.eval(sourceRed).r;
+                    blue = backdrop.eval(sourceBlue).b;
+                }
                 half3 refracted = half3(red, blurred.g, blue);
                 float interiorTransmission = (1.0 - rim) * mix(0.18, 0.08, regularity);
                 refracted = mix(refracted, blurred, half(interiorTransmission));

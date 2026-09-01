@@ -20,4 +20,5 @@ android {
 
 dependencies {
     api(project(":liquid-glass-core"))
+    testImplementation("junit:junit:4.13.2")
 }
