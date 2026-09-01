@@ -6,7 +6,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  consumer:
+    name: Verify packed consumer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006"
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test -- --runInBand
+      - run: npm run test:pack
+      - run: npm run example:install
+      - run: npm run example:typecheck
+      - run: npm run example:bundle
+      - name: Assemble release consumer from installed tarball
+        working-directory: example-react-native/android
+        run: ./gradlew assembleRelease -PnewArchEnabled=true -PreactNativeArchitectures=x86_64
+
   package:
+    needs: consumer
     runs-on: ubuntu-latest
     env:
       NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -22,6 +50,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm test -- --runInBand
       - run: npm run build
       - run: npm pack --ignore-scripts
       - uses: actions/upload-artifact@v4

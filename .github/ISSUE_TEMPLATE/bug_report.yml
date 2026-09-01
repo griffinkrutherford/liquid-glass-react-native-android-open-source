@@ -1,0 +1,145 @@
+name: Bug report
+description: Report a crash, incorrect rendering, or broken integration
+labels: ['bug', 'needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Rendering behavior here depends on the device GPU, the Android version,
+        and the exact scene composition. Reports without a version, an API
+        level, and a reproduction usually cannot be acted on.
+
+        Do not use this form for security vulnerabilities. See
+        [SECURITY.md](https://github.com/griffinkrutherford/liquid-glass-react-native-android-open-source/blob/main/SECURITY.md)
+        for private reporting.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happens
+      description: What you observed, and what you expected instead.
+    validations:
+      required: true
+
+  - type: input
+    id: library-version
+    attributes:
+      label: Library version
+      description: Exact version or Git tag of @griffinkrutherford/liquid-glass-android.
+      placeholder: 0.1.0
+    validations:
+      required: true
+
+  - type: input
+    id: react-native-version
+    attributes:
+      label: React Native version
+      description: Output of `npx react-native --version`, or "not applicable" for native Android use.
+      placeholder: 0.81.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: React Native architecture
+      options:
+        - New Architecture (Fabric)
+        - Old Architecture (Paper)
+        - Not applicable (native Android only)
+        - Not sure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: project-type
+    attributes:
+      label: Project type
+      options:
+        - Bare React Native
+        - Expo development build
+        - Expo Go
+        - Native Android application
+    validations:
+      required: true
+
+  - type: input
+    id: android-version
+    attributes:
+      label: Android version and API level
+      placeholder: Android 14 (API 34)
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device or emulator
+      description: Model, or emulator image and whether hardware acceleration is on.
+      placeholder: Pixel 7, or Pixel 6 API 33 emulator (host GPU)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: render-path
+    attributes:
+      label: Rendering path in use
+      description: >-
+        API 33+ uses the AGSL runtime shader. API 23 to 32 uses the static
+        translucent fallback. `isLiquidGlassSupported` is true only on the
+        shader path.
+      options:
+        - Runtime AGSL shader (Android 13+, API 33 or newer)
+        - Static fallback (Android 12L or older, API 32 or below)
+        - Both
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered steps that reliably produce the problem.
+      placeholder: |
+        1. Render a LiquidGlassScene with an Image background
+        2. Add one LiquidGlassView with effect="clear"
+        3. Navigate away and back
+        4. The backdrop is stale
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction
+      description: >-
+        A link to a minimal repository, or a self-contained component that
+        renders the failure. Include the props you passed and the scene
+        structure. Snippets that omit the surrounding LiquidGlassScene are
+        usually not reproducible.
+      render: tsx
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs, stack trace, or screenshots
+      description: >-
+        Relevant `adb logcat` output for a crash. Before and after screenshots
+        or a screen recording for a visual problem.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am on a supported setup (React Native 0.76+, Android API 23+) or have said otherwise above.
+          required: true
+        - label: I understand this project is pre-1.0 and its API is unstable.
+          required: true

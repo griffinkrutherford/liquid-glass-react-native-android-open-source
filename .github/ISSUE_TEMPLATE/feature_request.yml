@@ -1,0 +1,75 @@
+name: Feature request
+description: Propose a new prop, material, or capability
+labels: ['enhancement', 'needs triage']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The project is pre-1.0 and the public API is still being reduced and
+        stabilized. Proposals that add a prop are weighed against keeping the
+        surface small enough to stabilize for 1.0. Check
+        [LAUNCH_PLAN.md](https://github.com/griffinkrutherford/liquid-glass-react-native-android-open-source/blob/main/LAUNCH_PLAN.md)
+        first; the change may already be planned.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to build, and what makes it hard or impossible today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: >-
+        Concrete usage. Prop names, units, defaults, and valid ranges if you are
+        proposing a new prop.
+      render: tsx
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you tried
+      description: >-
+        Existing props, composition with plain React Native views, or other
+        libraries, and why they were not sufficient.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface does this affect
+      options:
+        - React Native props (src/ and the Fabric bridge)
+        - Android view API (liquid-glass-view)
+        - Physics engine (liquid-glass-core)
+        - Rendering and optics (AGSL shader)
+        - Documentation or examples
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: platforms
+    attributes:
+      label: Platform expectations
+      description: >-
+        What should happen on Android 12 and below, where the static fallback
+        runs, and on iOS, where the components render plain Views?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am willing to test a prototype implementation on a real device.
+          required: false

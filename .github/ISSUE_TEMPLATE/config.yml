@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/griffinkrutherford/liquid-glass-react-native-android-open-source/discussions
+    about: Ask about installation, scene composition, props, or performance in Discussions rather than opening an issue.
+  - name: Report a security vulnerability
+    url: https://github.com/griffinkrutherford/liquid-glass-react-native-android-open-source/security/advisories/new
+    about: Report privately through GitHub Security Advisories. Do not open a public issue.
+  - name: Installation and API documentation
+    url: https://github.com/griffinkrutherford/liquid-glass-react-native-android-open-source#readme
+    about: Setup, supported props, and the Android version support boundaries.
