@@ -9,7 +9,8 @@ data class LiquidPhysicsConfig(
     val viscosity: Float = 14f,
     val touchForce: Float = 1f,
     val maxDisplacement: Float = 1f,
-    val fixedDeltaSeconds: Float = 1f / 120f,
+    /** Physics cadence is intentionally independent from the display's render cadence. */
+    val fixedDeltaSeconds: Float = 1f / 60f,
     val maxCatchUpSteps: Int = 8,
 ) {
     init {
