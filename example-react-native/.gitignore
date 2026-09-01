@@ -1,0 +1,22 @@
+# Android/IntelliJ
+build/
+.idea
+.gradle
+local.properties
+*.iml
+*.hprof
+.cxx/
+.kotlin/
+
+# node.js
+node_modules/
+npm-debug.log
+
+# Locally installed library tarball (produced by `npm run example:pack`)
+*.tgz
+
+# Bundle artifact
+*.jsbundle
+
+# Metro
+.metro-health-check*

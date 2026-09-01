@@ -8,3 +8,15 @@ captures/
 node_modules/
 npm-debug.log*
 lib/
+
+# Packed tarballs from `npm pack` / `npm run example:install`
+*.tgz
+
+# React Native example app outputs.
+# The example's lockfile is not committed: it pins the integrity hash of a
+# locally packed tarball, which differs on every machine and every re-pack.
+example-react-native/package-lock.json
+example-react-native/.kotlin/
+example-react-native/.metro-health-check*
+example-react-native/android/.cxx/
+example-react-native/android/app/src/main/assets/index.android.bundle

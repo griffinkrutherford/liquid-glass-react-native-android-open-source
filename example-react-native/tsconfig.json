@@ -1,0 +1,10 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    // The shared React Native config assumes Jest is installed. This example is
+    // a manual verification harness and ships no test runner.
+    "types": ["react", "react-native"]
+  },
+  "include": ["*.ts", "*.tsx", "src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "android"]
+}

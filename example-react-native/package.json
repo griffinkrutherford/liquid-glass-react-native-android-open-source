@@ -1,0 +1,37 @@
+{
+  "name": "liquid-glass-example",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "android:release": "react-native run-android --mode release",
+    "start": "react-native start",
+    "typecheck": "tsc --noEmit",
+    "bundle:check": "react-native bundle --platform android --dev false --entry-file index.js --bundle-output build/index.android.bundle --assets-dest build/assets"
+  },
+  "_comment": "Navigation dependencies use ~ ranges pinned to the React Native 0.81 era. Newer react-native-screens releases target a newer @react-native/codegen (React.ComponentRef instead of React.ElementRef) and fail to bundle on 0.81.",
+  "dependencies": {
+    "@griffinkrutherford/liquid-glass-android": "file:../griffinkrutherford-liquid-glass-android-0.1.0.tgz",
+    "@react-navigation/native": "~7.1.17",
+    "@react-navigation/native-stack": "~7.3.26",
+    "react": "19.1.4",
+    "react-native": "0.81.6",
+    "react-native-safe-area-context": "~5.6.1",
+    "react-native-screens": "~4.15.4"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@react-native-community/cli": "20.0.0",
+    "@react-native-community/cli-platform-android": "20.0.0",
+    "@react-native/babel-preset": "0.81.6",
+    "@react-native/metro-config": "0.81.6",
+    "@react-native/typescript-config": "0.81.6",
+    "@types/react": "^19.1.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
