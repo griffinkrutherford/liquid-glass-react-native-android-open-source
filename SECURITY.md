@@ -10,7 +10,7 @@ Preferred channel — GitHub private vulnerability reporting:
 <https://github.com/griffinkrutherford/liquid-glass-react-native-android-open-source/security/advisories/new>
 
 If you cannot use GitHub Security Advisories, email
-barrykarlrutherford@gmail.com with `SECURITY` in the subject line.
+griffinkrutherford@gmail.com with `SECURITY` in the subject line.
 
 Please include:
 
