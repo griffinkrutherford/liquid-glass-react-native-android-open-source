@@ -37,3 +37,7 @@ are useful only as a repeatability check; they are not a substitute for the phys
 Cold startup time-to-initial-display was 161.50 ms median across five runs. The multiple-element
 journey is the only steady screen over the 60 Hz frame budget in this emulator baseline. Record a
 new table for every physical device before using results to accept an optimization.
+
+A same-emulator run after the first physics/shader changes showed large run-to-run variance
+(especially in the drag journey), so it was deliberately not used to claim a speedup. Physical
+devices with stable thermal conditions remain the acceptance gate for further tiers.

@@ -25,7 +25,9 @@ object ExampleFrameReporter {
     if (frameData.isJank) stats.janky.incrementAndGet()
     stats.durationNanos.addAndGet(frameData.frameDurationUiNanos)
 
-    if (frameData.isJank || total % REPORT_EVERY_FRAMES == 0L) report(name, stats, frameData)
+    // Logging from every janky frame creates an observer effect on the UI thread. Keep collection
+    // per-frame, but emit only periodic aggregates and lifecycle flushes.
+    if (total % REPORT_EVERY_FRAMES == 0L) report(name, stats, frameData)
   }
 
   fun flush() {
