@@ -1,0 +1,10 @@
+{
+  "//": "Typechecks the Jest suite. Kept separate from tsconfig.json so the `jest` ambient types and the hand-written Node shims in src/__tests__/node.d.ts never leak into the published declarations or into `bob build`.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["jest", "react", "react-native"]
+  },
+  "include": ["src"],
+  "exclude": []
+}

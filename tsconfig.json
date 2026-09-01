@@ -11,5 +11,7 @@
     "target": "ES2021",
     "types": ["react", "react-native"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "//": "Tests are excluded here so the published typings and `bob build` see only shippable sources. They are typechecked by tsconfig.test.json, which adds the jest and node ambient types.",
+  "exclude": ["src/__tests__"]
 }

@@ -13,6 +13,23 @@ import io.github.griffinkrutherford.liquidglass.LiquidGlassColorScheme
 import io.github.griffinkrutherford.liquidglass.LiquidGlassEffect
 import io.github.griffinkrutherford.liquidglass.LiquidGlassView
 
+/**
+ * Fabric/legacy manager for the glass surface.
+ *
+ * Unit contract with JavaScript, mirrored in the TypeScript prop documentation:
+ * - `cornerRadius`, `refractionStrength`, `bevelDepth`, `thickness` and `blurRadius` arrive as
+ *   React Native density-independent pixels and are converted with [dip].
+ * - `animationDuration` arrives in milliseconds.
+ * - `indexOfRefraction`, `dispersion`, `effectAmount` and `tintAmount` are dimensionless and are
+ *   forwarded unscaled.
+ *
+ * Material presets (`material="crystal" | "satin" | "nocturne"`) are resolved in JavaScript, so
+ * every prop below always arrives with a concrete, already-merged value. Under Fabric a prop
+ * carries its default even when the caller never supplied it, so preset merge semantics cannot be
+ * implemented here.
+ *
+ * Out-of-range values are clamped by `LiquidGlassView`; JavaScript warns about them in `__DEV__`.
+ */
 @ReactModule(name = LiquidGlassViewManager.NAME)
 class LiquidGlassViewManager :
     ViewGroupManager<LiquidGlassView>(),
@@ -57,8 +74,13 @@ class LiquidGlassViewManager :
     @ReactProp(name = "refractionStrength", defaultFloat = 24f)
     override fun setRefractionStrength(view: LiquidGlassView, value: Float) { view.refractionStrength = dip(value) }
 
+    /**
+     * Dimensionless. The chromatic split it produces already scales with the dp-based refraction
+     * geometry, so converting it from DIP would scale the fringe a second time and make the same
+     * JavaScript value look different on every screen density. Passed through unscaled.
+     */
     @ReactProp(name = "dispersion", defaultFloat = 2.4f)
-    override fun setDispersion(view: LiquidGlassView, value: Float) { view.dispersion = dip(value) }
+    override fun setDispersion(view: LiquidGlassView, value: Float) { view.dispersion = value }
 
     @ReactProp(name = "indexOfRefraction", defaultFloat = 1.47f)
     override fun setIndexOfRefraction(view: LiquidGlassView, value: Float) { view.indexOfRefraction = value }

@@ -12,6 +12,12 @@ buildscript {
 apply plugin: 'com.android.library'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+// Generates the RNLiquidGlassViewManagerDelegate/Interface types that the view managers implement.
+// The plugin reads `codegenConfig` from package.json and is supplied by the consuming app, whose
+// settings.gradle includes the `@react-native/gradle-plugin` composite build. Without this the
+// managers reference classes that no consumer build ever produces.
+apply plugin: 'com.facebook.react'
+
 android {
     namespace 'io.github.griffinkrutherford.liquidglass.react'
     compileSdk safeExtGet('compileSdkVersion', 35)
@@ -25,7 +31,8 @@ android {
     sourceSets {
         main.java.srcDirs += [
             '../liquid-glass-core/src/main/kotlin',
-            '../liquid-glass-view/src/main/java'
+            '../liquid-glass-view/src/main/java',
+            layout.buildDirectory.dir('generated/source/codegen/java').get().asFile
         ]
     }
 
