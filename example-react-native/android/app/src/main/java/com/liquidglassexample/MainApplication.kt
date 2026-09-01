@@ -16,7 +16,8 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         // LiquidGlassPackage is resolved by autolinking from the installed npm tarball.
         // Nothing is added manually here on purpose: that is what this example verifies.
-        override fun getPackages(): List<ReactPackage> = PackageList(this).packages
+        override fun getPackages(): List<ReactPackage> =
+            PackageList(this).packages.apply { add(PerformanceMonitorPackage()) }
 
         override fun getJSMainModuleName(): String = "index"
 

@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import {StatusBar} from 'react-native';
+import {NativeModules, StatusBar} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import {SafeAreaProvider} from 'react-native-safe-area-context';
@@ -21,11 +21,16 @@ import type {RootStackParamList} from './src/navigation';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const reportScreen = (name?: string) =>
+  NativeModules.PerformanceMonitor?.setScreen(name ?? 'Unknown');
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar barStyle="light-content" />
-      <NavigationContainer>
+      <NavigationContainer
+        onReady={() => reportScreen('Home')}
+        onStateChange={state => reportScreen(state?.routes[state.index]?.name)}>
         <Stack.Navigator
           screenOptions={{
             headerStyle: {backgroundColor: '#0b1020'},

@@ -1,12 +1,15 @@
 package com.liquidglassexample
 
 import android.os.Bundle
+import androidx.metrics.performance.JankStats
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 class MainActivity : ReactActivity() {
+
+  private lateinit var jankStats: JankStats
 
   /**
    * Returns the name of the main component registered from JavaScript. This is used to schedule
@@ -28,5 +31,19 @@ class MainActivity : ReactActivity() {
    */
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(null)
+    jankStats = JankStats.createAndTrack(window, ExampleFrameReporter::record)
+  }
+
+  override fun onStart() {
+    super.onStart()
+    if (::jankStats.isInitialized) jankStats.isTrackingEnabled = true
+  }
+
+  override fun onStop() {
+    if (::jankStats.isInitialized) {
+      jankStats.isTrackingEnabled = false
+      ExampleFrameReporter.flush()
+    }
+    super.onStop()
   }
 }
