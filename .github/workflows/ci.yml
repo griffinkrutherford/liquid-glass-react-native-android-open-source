@@ -24,7 +24,8 @@ jobs:
       - run: npm run build
       - run: npm run android:bridge-check
       - run: npm test -- --runInBand
-      - run: npm run test:pack
+      # The package was built above; the harness only needs to pack and inspect it.
+      - run: npm run test:pack -- --skip-build
       - run: ./gradlew test lintDebug :sample-android:assembleDebug
 
   consumer-app:

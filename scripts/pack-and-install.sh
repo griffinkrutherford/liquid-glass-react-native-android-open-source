@@ -60,7 +60,10 @@ fi
 step "Packing tarball"
 # --ignore-scripts: the build above already ran `prepare`; re-running it here
 # would make the packed contents depend on script ordering.
-TARBALL_NAME="$(cd "$ROOT" && npm pack --ignore-scripts --silent --pack-destination "$WORKDIR")"
+# npm 10 can emit `prepare` lifecycle output to stdout even with
+# `--ignore-scripts`. The tarball filename is the final output line; keeping
+# only that line prevents lifecycle logs from becoming part of the path.
+TARBALL_NAME="$(cd "$ROOT" && npm pack --ignore-scripts --silent --pack-destination "$WORKDIR" | tail -n 1)"
 TARBALL="$WORKDIR/$TARBALL_NAME"
 [ -f "$TARBALL" ] || { echo "npm pack did not produce $TARBALL" >&2; exit 1; }
 printf '  tarball: %s (%s)\n' "$TARBALL_NAME" "$(du -h "$TARBALL" | cut -f1)"
