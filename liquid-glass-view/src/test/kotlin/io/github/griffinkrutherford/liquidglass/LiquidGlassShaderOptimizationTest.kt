@@ -50,6 +50,8 @@ class LiquidGlassShaderOptimizationTest {
     @Test
     fun `exclusion scales displacement and internal reflection without replacing glass color`() {
         assertTrue(shaderSource.contains("if (exclusion.z > 0.001)"))
+        assertTrue(shaderSource.contains("float exclusionMask ="))
+        assertTrue(!shaderSource.contains("float exclusion ="))
         assertTrue(shaderSource.contains("offsetRed *= localRefraction;"))
         assertTrue(shaderSource.contains("offsetGreen *= localRefraction;"))
         assertTrue(shaderSource.contains("offsetBlue *= localRefraction;"))

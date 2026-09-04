@@ -653,10 +653,10 @@ class LiquidGlassView @JvmOverloads constructor(
                     float exclusionDistance = length(p - exclusion.xy * size);
                     float exclusionInner = max(exclusion.z - exclusion.w, 0.0);
                     float exclusionOuter = max(exclusion.z, exclusionInner + 0.001);
-                    float exclusion = 1.0 - smoothstep(
+                    float exclusionMask = 1.0 - smoothstep(
                         exclusionInner, exclusionOuter, exclusionDistance
                     );
-                    localRefraction = 1.0 - exclusion;
+                    localRefraction = 1.0 - exclusionMask;
                 }
                 offsetRed *= localRefraction;
                 offsetGreen *= localRefraction;
