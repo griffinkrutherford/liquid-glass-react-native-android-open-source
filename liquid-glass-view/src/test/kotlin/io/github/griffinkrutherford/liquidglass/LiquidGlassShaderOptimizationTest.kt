@@ -64,6 +64,23 @@ class LiquidGlassShaderOptimizationTest {
         assertTrue(shaderSource.contains("glass = mix(base.rgb, glass"))
     }
 
+    @Test
+    fun `undisturbed views compile a shader without physics texture samples`() {
+        val source = String(
+            Files.readAllBytes(
+                sequenceOf(
+                    Path.of("src/main/java/io/github/griffinkrutherford/liquidglass/LiquidGlassView.kt"),
+                    Path.of("liquid-glass-view/src/main/java/io/github/griffinkrutherford/liquidglass/LiquidGlassView.kt"),
+                ).first(Files::exists),
+            ),
+        )
+
+        assertTrue(source.contains("ensureRuntimeShader(membraneWasDisturbed)"))
+        assertTrue(source.contains("if (usePhysics) GLASS_SHADER else GLASS_SHADER_WITHOUT_PHYSICS"))
+        assertTrue(source.contains("float2 physicsSlope = float2(0.0);"))
+        assertTrue(source.contains("membraneWasDisturbed = true"))
+    }
+
     private fun weightedCross(
         center: FloatArray,
         right: FloatArray,

@@ -110,6 +110,7 @@ class LiquidGlassView @JvmOverloads constructor(
     private var scene: LiquidGlassScene? = null
     private var suppressedForCapture = false
     private var runtimeShader: RuntimeShader? = null
+    private var runtimeShaderUsesPhysics = false
     private var backdropInput: BitmapShader? = null
     private var backdropInputBitmap: Bitmap? = null
     private var heightInput: BitmapShader? = null
@@ -129,6 +130,7 @@ class LiquidGlassView @JvmOverloads constructor(
     private var darkness = 0f
     private var materialAnimator: ValueAnimator? = null
     private var hasAppliedEffect = false
+    private var membraneWasDisturbed = false
     private val memoryCallbacks = object : ComponentCallbacks2 {
         override fun onConfigurationChanged(newConfig: Configuration) = Unit
 
@@ -271,9 +273,9 @@ class LiquidGlassView @JvmOverloads constructor(
         previousFrameNanos = now
 
         val backdrop = sceneBackdrop?.takeUnless { it.isRecycled }
-        val shader = if (Build.VERSION.SDK_INT >= 33) ensureRuntimeShader() else null
+        val shader = if (Build.VERSION.SDK_INT >= 33) ensureRuntimeShader(membraneWasDisturbed) else null
         if (shader != null && backdrop != null && canvas.isHardwareAccelerated) {
-            drawRuntimeGlass(canvas, shader, backdrop)
+            drawRuntimeGlass(canvas, shader, backdrop, membraneWasDisturbed)
         } else {
             drawFallbackGlass(canvas)
         }
@@ -286,11 +288,15 @@ class LiquidGlassView @JvmOverloads constructor(
             (!runner.isAtRest() || materialAnimator?.isRunning == true)
 
     @TargetApi(33)
-    private fun ensureRuntimeShader(): RuntimeShader {
+    private fun ensureRuntimeShader(usePhysics: Boolean): RuntimeShader {
         val existing = runtimeShader
-        if (existing != null) return existing
-        val created = RuntimeShader(GLASS_SHADER)
+        if (existing != null && runtimeShaderUsesPhysics == usePhysics) return existing
+        val created = RuntimeShader(if (usePhysics) GLASS_SHADER else GLASS_SHADER_WITHOUT_PHYSICS)
         runtimeShader = created
+        runtimeShaderUsesPhysics = usePhysics
+        backdropInput = null
+        backdropInputBitmap = null
+        heightInput = null
         return created
     }
 
@@ -311,25 +317,33 @@ class LiquidGlassView @JvmOverloads constructor(
     private fun releaseRenderResources() {
         heightInput = null
         runtimeShader = null
+        runtimeShaderUsesPhysics = false
         normalBitmap?.recycle()
         normalBitmap = null
         normalMapDirty = true
     }
 
     @TargetApi(33)
-    private fun drawRuntimeGlass(canvas: Canvas, shader: RuntimeShader, backdrop: Bitmap) {
-        val heightMap = ensureNormalBitmap()
-        if (normalMapDirty) updateNormalMap(heightMap)
+    private fun drawRuntimeGlass(
+        canvas: Canvas,
+        shader: RuntimeShader,
+        backdrop: Bitmap,
+        usePhysics: Boolean,
+    ) {
         if (backdropInputBitmap !== backdrop) {
             backdropInputBitmap = backdrop
             backdropInput = filteredShader(backdrop)
         }
-        if (heightInput == null) heightInput = filteredShader(heightMap)
         shader.setInputShader("backdrop", requireNotNull(backdropInput))
-        shader.setInputShader("heightMap", requireNotNull(heightInput))
+        if (usePhysics) {
+            val heightMap = ensureNormalBitmap()
+            if (normalMapDirty) updateNormalMap(heightMap)
+            if (heightInput == null) heightInput = filteredShader(heightMap)
+            shader.setInputShader("heightMap", requireNotNull(heightInput))
+            shader.setFloatUniform("gridSize", heightMap.width.toFloat(), heightMap.height.toFloat())
+        }
         shader.setFloatUniform("size", width.toFloat(), height.toFloat())
         shader.setFloatUniform("sceneOrigin", sceneOriginX(), sceneOriginY())
-        shader.setFloatUniform("gridSize", heightMap.width.toFloat(), heightMap.height.toFloat())
         shader.setFloatUniform("cornerRadius", cornerRadius)
         shader.setFloatUniform("refraction", refractionStrength)
         shader.setFloatUniform("dispersion", dispersion)
@@ -451,6 +465,7 @@ class LiquidGlassView @JvmOverloads constructor(
     }
 
     private fun applyImpulse(x: Float, y: Float, strength: Float) {
+        membraneWasDisturbed = true
         membrane.applyImpulse(
             x.coerceIn(0f, width.toFloat()),
             y.coerceIn(0f, height.toFloat()),
@@ -713,5 +728,26 @@ class LiquidGlassView @JvmOverloads constructor(
                 return half4(glass, 1.0);
             }
         """
+
+        private val GLASS_SHADER_WITHOUT_PHYSICS = GLASS_SHADER
+            .replace("            uniform shader heightMap;\n", "")
+            .replace("            uniform float2 gridSize;\n", "")
+            .replace(
+                """                float2 uv = p / size;
+                float2 texel = 1.0 / max(gridSize - 1.0, float2(1.0));
+                float dx = float(heightAt(uv + float2(texel.x, 0.0)) - heightAt(uv - float2(texel.x, 0.0)));
+                float dy = float(heightAt(uv + float2(0.0, texel.y)) - heightAt(uv - float2(0.0, texel.y)));
+                float2 physicsSlope = float2(dx, dy) * mix(1.1, 0.82, regularity);""",
+                """                float2 physicsSlope = float2(0.0);""",
+            )
+            .replace(
+                """            half heightAt(float2 uv) {
+                float2 coordinate = clamp(uv, float2(0.0), float2(1.0)) * (gridSize - 1.0);
+                return heightMap.eval(coordinate).r;
+            }
+
+""",
+                "",
+            )
     }
 }
