@@ -96,6 +96,7 @@ class LiquidGlassShaderOptimizationTest {
         assertTrue(source.contains("if (shaderUniformsDirty)"))
         assertTrue(source.contains("shaderUniformsDirty = false"))
         assertTrue(source.contains("shader.setFloatUniform(\"sceneOrigin\""))
+        assertTrue(source.contains("if (current == value) return"))
     }
 
     private fun weightedCross(

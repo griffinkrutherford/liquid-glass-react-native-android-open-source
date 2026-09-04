@@ -55,43 +55,43 @@ class LiquidGlassView @JvmOverloads constructor(
             )
         }
     var colorScheme: LiquidGlassColorScheme = LiquidGlassColorScheme.SYSTEM
-        set(value) { field = value; invalidateShaderUniforms() }
+        set(value) { if (field != value) { field = value; invalidateShaderUniforms() } }
     var interactive: Boolean = false
     var draggable: Boolean = false
     var animated: Boolean = true
     var animationDurationMillis: Long = 320L
         set(value) { field = value.coerceAtLeast(0L) }
     var cornerRadius = dp(32f)
-        set(value) { field = value.coerceAtLeast(0f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceAtLeast(0f), field) { field = it } }
     var refractionStrength = dp(24f)
-        set(value) { field = value.coerceIn(0f, dp(80f)); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, dp(80f)), field) { field = it } }
     /** Chromatic dispersion as a dimensionless index-of-refraction split, not a dp length. */
     var dispersion = 2.4f
-        set(value) { field = value.coerceIn(0f, 12f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, 12f), field) { field = it } }
     var indexOfRefraction = 1.47f
-        set(value) { field = value.coerceIn(1.01f, 3f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(1.01f, 3f), field) { field = it } }
     var bevelDepth = dp(22f)
-        set(value) { field = value.coerceIn(dp(2f), dp(48f)); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(dp(2f), dp(48f)), field) { field = it } }
     var baseThickness = dp(6f)
-        set(value) { field = value.coerceIn(0f, dp(64f)); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, dp(64f)), field) { field = it } }
     var blurRadius = dp(2.2f)
-        set(value) { field = value.coerceIn(0f, dp(12f)); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, dp(12f)), field) { field = it } }
     var effectAmount = 0.96f
-        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, 1f), field) { field = it } }
     var tintColor: Int = Color.rgb(190, 229, 255)
-        set(value) { field = value; invalidateShaderUniforms() }
+        set(value) { if (field != value) { field = value; invalidateShaderUniforms() } }
     var tintAmount = 0.11f
-        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, 1f), field) { field = it } }
     var refractionExclusionEnabled = false
-        set(value) { field = value; invalidateShaderUniforms() }
+        set(value) { if (field != value) { field = value; invalidateShaderUniforms() } }
     var refractionExclusionCenterX = 0.5f
-        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, 1f), field) { field = it } }
     var refractionExclusionCenterY = 0.5f
-        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceIn(0f, 1f), field) { field = it } }
     var refractionExclusionRadius = 0f
-        set(value) { field = value.coerceAtLeast(0f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceAtLeast(0f), field) { field = it } }
     var refractionExclusionFeather = 0f
-        set(value) { field = value.coerceAtLeast(0f); invalidateShaderUniforms() }
+        set(value) { updateShaderFloat(value.coerceAtLeast(0f), field) { field = it } }
 
     private val membrane = LiquidMembrane(
         LiquidPhysicsConfig(columns = 25, rows = 25, stiffness = 42f, damping = 3.8f, viscosity = 22f),
@@ -486,6 +486,12 @@ class LiquidGlassView @JvmOverloads constructor(
     private fun invalidateShaderUniforms() {
         shaderUniformsDirty = true
         invalidate()
+    }
+
+    private inline fun updateShaderFloat(value: Float, current: Float, update: (Float) -> Unit) {
+        if (current == value) return
+        update(value)
+        invalidateShaderUniforms()
     }
 
     private fun updateDragPosition(event: MotionEvent) {
