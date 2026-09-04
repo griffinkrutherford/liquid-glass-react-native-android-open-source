@@ -81,6 +81,23 @@ class LiquidGlassShaderOptimizationTest {
         assertTrue(source.contains("membraneWasDisturbed = true"))
     }
 
+    @Test
+    fun `retained shader state avoids unchanged input and uniform uploads`() {
+        val source = String(
+            Files.readAllBytes(
+                sequenceOf(
+                    Path.of("src/main/java/io/github/griffinkrutherford/liquidglass/LiquidGlassView.kt"),
+                    Path.of("liquid-glass-view/src/main/java/io/github/griffinkrutherford/liquidglass/LiquidGlassView.kt"),
+                ).first(Files::exists),
+            ),
+        )
+
+        assertTrue(source.contains("if (backdropInputBitmap !== backdrop)"))
+        assertTrue(source.contains("if (shaderUniformsDirty)"))
+        assertTrue(source.contains("shaderUniformsDirty = false"))
+        assertTrue(source.contains("shader.setFloatUniform(\"sceneOrigin\""))
+    }
+
     private fun weightedCross(
         center: FloatArray,
         right: FloatArray,

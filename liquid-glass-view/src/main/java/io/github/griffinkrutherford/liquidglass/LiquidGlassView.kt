@@ -55,43 +55,43 @@ class LiquidGlassView @JvmOverloads constructor(
             )
         }
     var colorScheme: LiquidGlassColorScheme = LiquidGlassColorScheme.SYSTEM
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; invalidateShaderUniforms() }
     var interactive: Boolean = false
     var draggable: Boolean = false
     var animated: Boolean = true
     var animationDurationMillis: Long = 320L
         set(value) { field = value.coerceAtLeast(0L) }
     var cornerRadius = dp(32f)
-        set(value) { field = value.coerceAtLeast(0f); invalidate() }
+        set(value) { field = value.coerceAtLeast(0f); invalidateShaderUniforms() }
     var refractionStrength = dp(24f)
-        set(value) { field = value.coerceIn(0f, dp(80f)); invalidate() }
+        set(value) { field = value.coerceIn(0f, dp(80f)); invalidateShaderUniforms() }
     /** Chromatic dispersion as a dimensionless index-of-refraction split, not a dp length. */
     var dispersion = 2.4f
-        set(value) { field = value.coerceIn(0f, 12f); invalidate() }
+        set(value) { field = value.coerceIn(0f, 12f); invalidateShaderUniforms() }
     var indexOfRefraction = 1.47f
-        set(value) { field = value.coerceIn(1.01f, 3f); invalidate() }
+        set(value) { field = value.coerceIn(1.01f, 3f); invalidateShaderUniforms() }
     var bevelDepth = dp(22f)
-        set(value) { field = value.coerceIn(dp(2f), dp(48f)); invalidate() }
+        set(value) { field = value.coerceIn(dp(2f), dp(48f)); invalidateShaderUniforms() }
     var baseThickness = dp(6f)
-        set(value) { field = value.coerceIn(0f, dp(64f)); invalidate() }
+        set(value) { field = value.coerceIn(0f, dp(64f)); invalidateShaderUniforms() }
     var blurRadius = dp(2.2f)
-        set(value) { field = value.coerceIn(0f, dp(12f)); invalidate() }
+        set(value) { field = value.coerceIn(0f, dp(12f)); invalidateShaderUniforms() }
     var effectAmount = 0.96f
-        set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
     var tintColor: Int = Color.rgb(190, 229, 255)
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; invalidateShaderUniforms() }
     var tintAmount = 0.11f
-        set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
     var refractionExclusionEnabled = false
-        set(value) { field = value; invalidate() }
+        set(value) { field = value; invalidateShaderUniforms() }
     var refractionExclusionCenterX = 0.5f
-        set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
     var refractionExclusionCenterY = 0.5f
-        set(value) { field = value.coerceIn(0f, 1f); invalidate() }
+        set(value) { field = value.coerceIn(0f, 1f); invalidateShaderUniforms() }
     var refractionExclusionRadius = 0f
-        set(value) { field = value.coerceAtLeast(0f); invalidate() }
+        set(value) { field = value.coerceAtLeast(0f); invalidateShaderUniforms() }
     var refractionExclusionFeather = 0f
-        set(value) { field = value.coerceAtLeast(0f); invalidate() }
+        set(value) { field = value.coerceAtLeast(0f); invalidateShaderUniforms() }
 
     private val membrane = LiquidMembrane(
         LiquidPhysicsConfig(columns = 25, rows = 25, stiffness = 42f, damping = 3.8f, viscosity = 22f),
@@ -111,6 +111,7 @@ class LiquidGlassView @JvmOverloads constructor(
     private var suppressedForCapture = false
     private var runtimeShader: RuntimeShader? = null
     private var runtimeShaderUsesPhysics = false
+    private var shaderUniformsDirty = true
     private var backdropInput: BitmapShader? = null
     private var backdropInputBitmap: Bitmap? = null
     private var heightInput: BitmapShader? = null
@@ -227,6 +228,7 @@ class LiquidGlassView @JvmOverloads constructor(
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         fillGradient = null
         borderGradient = null
+        shaderUniformsDirty = true
         if (width > 0 && height > 0) {
             membrane.resize(width.toFloat(), height.toFloat())
         }
@@ -294,6 +296,7 @@ class LiquidGlassView @JvmOverloads constructor(
         val created = RuntimeShader(if (usePhysics) GLASS_SHADER else GLASS_SHADER_WITHOUT_PHYSICS)
         runtimeShader = created
         runtimeShaderUsesPhysics = usePhysics
+        shaderUniformsDirty = true
         backdropInput = null
         backdropInputBitmap = null
         heightInput = null
@@ -333,44 +336,49 @@ class LiquidGlassView @JvmOverloads constructor(
         if (backdropInputBitmap !== backdrop) {
             backdropInputBitmap = backdrop
             backdropInput = filteredShader(backdrop)
+            shader.setInputShader("backdrop", requireNotNull(backdropInput))
         }
-        shader.setInputShader("backdrop", requireNotNull(backdropInput))
         if (usePhysics) {
             val heightMap = ensureNormalBitmap()
             if (normalMapDirty) updateNormalMap(heightMap)
-            if (heightInput == null) heightInput = filteredShader(heightMap)
-            shader.setInputShader("heightMap", requireNotNull(heightInput))
-            shader.setFloatUniform("gridSize", heightMap.width.toFloat(), heightMap.height.toFloat())
+            if (heightInput == null) {
+                heightInput = filteredShader(heightMap)
+                shader.setInputShader("heightMap", requireNotNull(heightInput))
+                shader.setFloatUniform("gridSize", heightMap.width.toFloat(), heightMap.height.toFloat())
+            }
         }
-        shader.setFloatUniform("size", width.toFloat(), height.toFloat())
         shader.setFloatUniform("sceneOrigin", sceneOriginX(), sceneOriginY())
-        shader.setFloatUniform("cornerRadius", cornerRadius)
-        shader.setFloatUniform("refraction", refractionStrength)
-        shader.setFloatUniform("dispersion", dispersion)
-        shader.setFloatUniform("indexOfRefraction", indexOfRefraction)
-        shader.setFloatUniform("bevelDepth", bevelDepth)
-        shader.setFloatUniform("baseThickness", baseThickness)
-        shader.setFloatUniform("blurRadius", blurRadius)
-        shader.setFloatUniform("effectAmount", effectAmount)
-        shader.setFloatUniform("regularity", regularity)
-        shader.setFloatUniform("frostiness", frostiness)
-        shader.setFloatUniform("darkness", darkness)
-        shader.setFloatUniform("materialization", materialization)
-        shader.setFloatUniform("appearance", resolvedAppearance())
-        shader.setFloatUniform(
-            "exclusion",
-            refractionExclusionCenterX,
-            refractionExclusionCenterY,
-            if (refractionExclusionEnabled) refractionExclusionRadius else 0f,
-            refractionExclusionFeather,
-        )
-        shader.setFloatUniform(
-            "tint",
-            Color.red(tintColor) / 255f,
-            Color.green(tintColor) / 255f,
-            Color.blue(tintColor) / 255f,
-            tintAmount,
-        )
+        if (shaderUniformsDirty) {
+            shader.setFloatUniform("size", width.toFloat(), height.toFloat())
+            shader.setFloatUniform("cornerRadius", cornerRadius)
+            shader.setFloatUniform("refraction", refractionStrength)
+            shader.setFloatUniform("dispersion", dispersion)
+            shader.setFloatUniform("indexOfRefraction", indexOfRefraction)
+            shader.setFloatUniform("bevelDepth", bevelDepth)
+            shader.setFloatUniform("baseThickness", baseThickness)
+            shader.setFloatUniform("blurRadius", blurRadius)
+            shader.setFloatUniform("effectAmount", effectAmount)
+            shader.setFloatUniform("regularity", regularity)
+            shader.setFloatUniform("frostiness", frostiness)
+            shader.setFloatUniform("darkness", darkness)
+            shader.setFloatUniform("materialization", materialization)
+            shader.setFloatUniform("appearance", resolvedAppearance())
+            shader.setFloatUniform(
+                "exclusion",
+                refractionExclusionCenterX,
+                refractionExclusionCenterY,
+                if (refractionExclusionEnabled) refractionExclusionRadius else 0f,
+                refractionExclusionFeather,
+            )
+            shader.setFloatUniform(
+                "tint",
+                Color.red(tintColor) / 255f,
+                Color.green(tintColor) / 255f,
+                Color.blue(tintColor) / 255f,
+                tintAmount,
+            )
+            shaderUniformsDirty = false
+        }
         paint.shader = shader
         canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), cornerRadius, cornerRadius, paint)
         paint.shader = null
@@ -475,6 +483,11 @@ class LiquidGlassView @JvmOverloads constructor(
         invalidate()
     }
 
+    private fun invalidateShaderUniforms() {
+        shaderUniformsDirty = true
+        invalidate()
+    }
+
     private fun updateDragPosition(event: MotionEvent) {
         val container = parent as? ViewGroup ?: return
         val targetX = dragStartTranslationX + event.rawX - dragStartRawX
@@ -530,7 +543,7 @@ class LiquidGlassView @JvmOverloads constructor(
             regularity = targetRegularity
             frostiness = targetFrostiness
             darkness = targetDarkness
-            invalidate()
+            invalidateShaderUniforms()
             return
         }
         val startMaterialization = materialization
@@ -546,7 +559,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 regularity = startRegularity + (targetRegularity - startRegularity) * fraction
                 frostiness = startFrostiness + (targetFrostiness - startFrostiness) * fraction
                 darkness = startDarkness + (targetDarkness - startDarkness) * fraction
-                invalidate()
+                invalidateShaderUniforms()
             }
             start()
         }
