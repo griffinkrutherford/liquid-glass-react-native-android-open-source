@@ -20,7 +20,9 @@ class FixedTimestepRunner(
     }
 
     /** Returns the number of fixed steps executed. Excess catch-up time is discarded safely. */
-    fun advance(elapsedSeconds: Float): Int {
+    fun advance(elapsedSeconds: Float): Int = advance(elapsedSeconds, stopAtRest = false)
+
+    private fun advance(elapsedSeconds: Float, stopAtRest: Boolean): Int {
         if (!elapsedSeconds.isFinite() || elapsedSeconds <= 0f) return 0
         accumulator = (accumulator + elapsedSeconds)
             .coerceAtMost(fixedDeltaSeconds * maxCatchUpSteps)
@@ -29,6 +31,10 @@ class FixedTimestepRunner(
             simulation.step(fixedDeltaSeconds)
             accumulator -= fixedDeltaSeconds
             steps++
+            if (stopAtRest && simulation.isAtRest()) {
+                accumulator = 0f
+                break
+            }
         }
         return steps
     }
@@ -42,7 +48,7 @@ class FixedTimestepRunner(
             accumulator = 0f
             return 0
         }
-        return advance(elapsedSeconds)
+        return advance(elapsedSeconds, stopAtRest = true)
     }
 
     /** True when the underlying simulation has settled and stepping it would be wasted work. */

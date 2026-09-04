@@ -54,6 +54,58 @@ class FixedTimestepRunnerTest {
         }
     }
 
+    @Test
+    fun activeCatchUpStopsAtRestAndDiscardsRemainingTime() {
+        val simulation = SettlingSimulation()
+        val runner = FixedTimestepRunner(simulation, 0.01f, 8)
+
+        assertEquals(1, runner.advanceIfActive(0.075f))
+        assertEquals(1, simulation.stepCount)
+        assertEquals(0, runner.advanceIfActive(1f))
+        simulation.resting = false
+        assertEquals(0, runner.advanceIfActive(0.005f))
+        assertEquals(1, runner.advanceIfActive(0.005f))
+        assertEquals(2, simulation.stepCount)
+    }
+
+    @Test
+    fun settlingOnLastStepAlsoDiscardsFractionalTime() {
+        val simulation = SettlingSimulation()
+        val runner = FixedTimestepRunner(simulation, 0.01f, 8)
+
+        assertEquals(1, runner.advanceIfActive(0.015f))
+        simulation.resting = false
+        assertEquals(0, runner.advanceIfActive(0.005f))
+        assertEquals(1, runner.advanceIfActive(0.005f))
+    }
+
+    @Test
+    fun unconditionalAdvanceStillExecutesAllRequestedSteps() {
+        val simulation = SettlingSimulation()
+        val runner = FixedTimestepRunner(simulation, 0.01f, 8)
+
+        assertEquals(7, runner.advance(0.075f))
+        assertEquals(7, simulation.stepCount)
+    }
+
+    private class SettlingSimulation : LiquidSimulation {
+        var stepCount = 0
+        var resting = false
+
+        override fun resize(width: Float, height: Float) = Unit
+        override fun applyImpulse(x: Float, y: Float, radius: Float, strength: Float) = Unit
+        override fun step(fixedDeltaSeconds: Float) {
+            stepCount++
+            resting = true
+        }
+        override fun snapshot(): SurfaceSnapshot = error("Not needed")
+        override fun reset() {
+            stepCount = 0
+            resting = true
+        }
+        override fun isAtRest(): Boolean = resting
+    }
+
     private class CountingSimulation : LiquidSimulation {
         var stepCount = 0
 
