@@ -641,17 +641,15 @@ class LiquidGlassView @JvmOverloads constructor(
                 return float2(dx, dy) / (2.0 * epsilon);
             }
 
-            float2 refractedRayOffset(float2 slope, float opticalHeight, float ior, float gain) {
-                float3 normal = normalize(float3(-slope.x, -slope.y, 1.0));
+            float2 refractedRayOffset(
+                float3 normal, float incidentCosine, float pathLength, float limit, float ior, float gain
+            ) {
                 float3 incident = float3(0.0, 0.0, -1.0);
                 float eta = 1.0 / max(ior, 1.001);
-                float incidentCosine = dot(normal, incident);
                 float discriminant = max(1.0 - eta * eta * (1.0 - incidentCosine * incidentCosine), 0.0);
                 float3 transmitted = eta * incident -
                     (eta * incidentCosine + sqrt(discriminant)) * normal;
-                float pathLength = baseThickness + opticalHeight * 2.0;
                 float2 result = transmitted.xy / max(abs(transmitted.z), 0.08) * pathLength * gain;
-                float limit = refraction * mix(0.86, 1.32, clamp(baseThickness / max(size.y, 1.0), 0.0, 1.0));
                 float magnitude = length(result);
                 return result * min(1.0, limit / max(magnitude, 0.001));
             }
@@ -676,12 +674,24 @@ class LiquidGlassView @JvmOverloads constructor(
                 float2 surfaceSlope = bevelGradient(p, zRadius) + broadLensSlope + physicsSlope;
                 float opticalGain = refraction / max(zRadius, 1.0) * mix(0.92, 0.72, regularity);
 
+                // All wavelengths and Fresnel reflection share the same surface geometry.
+                float3 surfaceNormal = normalize(float3(-surfaceSlope.x, -surfaceSlope.y, 1.0));
+                float incidentCosine = dot(surfaceNormal, float3(0.0, 0.0, -1.0));
+                float pathLength = baseThickness + opticalHeight * 2.0;
+                float limit = refraction * mix(0.86, 1.32, clamp(baseThickness / max(size.y, 1.0), 0.0, 1.0));
+
                 float iorDelta = dispersion * 0.0012;
                 float iorRed = max(indexOfRefraction - iorDelta, 1.001);
                 float iorBlue = indexOfRefraction + iorDelta;
-                float2 offsetRed = refractedRayOffset(surfaceSlope, opticalHeight, iorRed, opticalGain);
-                float2 offsetGreen = refractedRayOffset(surfaceSlope, opticalHeight, indexOfRefraction, opticalGain);
-                float2 offsetBlue = refractedRayOffset(surfaceSlope, opticalHeight, iorBlue, opticalGain);
+                float2 offsetRed = refractedRayOffset(
+                    surfaceNormal, incidentCosine, pathLength, limit, iorRed, opticalGain
+                );
+                float2 offsetGreen = refractedRayOffset(
+                    surfaceNormal, incidentCosine, pathLength, limit, indexOfRefraction, opticalGain
+                );
+                float2 offsetBlue = refractedRayOffset(
+                    surfaceNormal, incidentCosine, pathLength, limit, iorBlue, opticalGain
+                );
                 float localRefraction = 1.0;
                 if (exclusion.z > 0.001) {
                     float exclusionDistance = length(p - exclusion.xy * size);
@@ -723,7 +733,6 @@ class LiquidGlassView @JvmOverloads constructor(
                 refracted = mix(refracted, blurred, half(interiorTransmission));
                 refracted = mix(refracted, blurred, half(frostiness * 0.76));
 
-                float3 surfaceNormal = normalize(float3(-surfaceSlope.x, -surfaceSlope.y, 1.0));
                 float f0 = pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
                 float fresnel = f0 + (1.0 - f0) * pow(1.0 - abs(surfaceNormal.z), 5.0);
                 float2 reflectionDirection = normalize(surfaceSlope + boundaryNormal * 0.001);
