@@ -43,8 +43,8 @@ class LiquidGlassShaderOptimizationTest {
         val blurBranch = shaderSource.substringAfter("if (materialBlur > 0.0)").substringBefore("\n                }")
         val dispersionBranch = shaderSource.substringAfter("if (dispersion > 0.0)").substringBefore("\n                }")
 
-        assertEquals(4, Regex("backdrop\\.eval").findAll(blurBranch).count())
-        assertEquals(2, Regex("backdrop\\.eval").findAll(dispersionBranch).count())
+        assertEquals(4, Regex("sampleBackdrop\\(").findAll(blurBranch).count())
+        assertEquals(2, Regex("sampleBackdrop\\(").findAll(dispersionBranch).count())
     }
 
     @Test
@@ -97,6 +97,15 @@ class LiquidGlassShaderOptimizationTest {
         assertTrue(source.contains("shaderUniformsDirty = false"))
         assertTrue(source.contains("shader.setFloatUniform(\"sceneOrigin\""))
         assertTrue(source.contains("if (current == value) return"))
+    }
+
+    @Test
+    fun `every backdrop lookup uses the physical to texture mapping`() {
+        assertEquals(1, Regex("backdrop\\.eval").findAll(shaderSource).count())
+        assertTrue(shaderSource.contains("backdrop.eval((scenePoint - backdropTransform.xy) * backdropTransform.z)"))
+        val main = shaderSource.substringAfter("half4 main(float2 p)")
+        assertEquals(9, Regex("sampleBackdrop\\(").findAll(main).count())
+        assertTrue(shaderSource.contains("return heightMap.eval(coordinate).r;"))
     }
 
     private fun weightedCross(

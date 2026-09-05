@@ -106,7 +106,7 @@ class LiquidGlassView @JvmOverloads constructor(
     private val displacements = FloatArray(normalPixels.size)
     private var normalBitmap: Bitmap? = null
     private var normalMapDirty = true
-    private var sceneBackdrop: Bitmap? = null
+    private var sceneBackdrop: SceneBackdrop? = null
     private var scene: LiquidGlassScene? = null
     private var suppressedForCapture = false
     private var runtimeShader: RuntimeShader? = null
@@ -152,13 +152,14 @@ class LiquidGlassView @JvmOverloads constructor(
      * Adopts the scene capture as the sampled backdrop. The scene owns the bitmap; this view only
      * borrows it until [clearSceneBackdrop] is called.
      */
-    internal fun setSceneBackdrop(bitmap: Bitmap) {
-        if (bitmap.isRecycled) {
+    internal fun setSceneBackdrop(frame: SceneBackdrop) {
+        if (frame.bitmap.isRecycled) {
             clearSceneBackdrop()
             return
         }
-        if (sceneBackdrop !== bitmap) {
-            sceneBackdrop = bitmap
+        if (sceneBackdrop !== frame) {
+            sceneBackdrop = frame
+            shaderUniformsDirty = true
             backdropInput = null
             backdropInputBitmap = null
         }
@@ -274,7 +275,7 @@ class LiquidGlassView @JvmOverloads constructor(
         }
         previousFrameNanos = now
 
-        val backdrop = sceneBackdrop?.takeUnless { it.isRecycled }
+        val backdrop = sceneBackdrop?.takeUnless { it.bitmap.isRecycled }
         val shader = if (Build.VERSION.SDK_INT >= 33) ensureRuntimeShader(membraneWasDisturbed) else null
         if (shader != null && backdrop != null && canvas.isHardwareAccelerated) {
             drawRuntimeGlass(canvas, shader, backdrop, membraneWasDisturbed)
@@ -330,9 +331,10 @@ class LiquidGlassView @JvmOverloads constructor(
     private fun drawRuntimeGlass(
         canvas: Canvas,
         shader: RuntimeShader,
-        backdrop: Bitmap,
+        frame: SceneBackdrop,
         usePhysics: Boolean,
     ) {
+        val backdrop = frame.bitmap
         if (backdropInputBitmap !== backdrop) {
             backdropInputBitmap = backdrop
             backdropInput = filteredShader(backdrop)
@@ -349,6 +351,9 @@ class LiquidGlassView @JvmOverloads constructor(
         }
         shader.setFloatUniform("sceneOrigin", sceneOriginX(), sceneOriginY())
         if (shaderUniformsDirty) {
+            shader.setFloatUniform(
+                "backdropTransform", frame.geometry.originX, frame.geometry.originY, frame.geometry.scale,
+            )
             shader.setFloatUniform("size", width.toFloat(), height.toFloat())
             shader.setFloatUniform("cornerRadius", cornerRadius)
             shader.setFloatUniform("refraction", refractionStrength)
@@ -589,6 +594,8 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform shader heightMap;
             uniform float2 size;
             uniform float2 sceneOrigin;
+            // xy = physical capture origin; z = scene-to-texture scale.
+            uniform float3 backdropTransform;
             uniform float2 gridSize;
             uniform float cornerRadius;
             uniform float refraction;
@@ -606,6 +613,11 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform float appearance;
             // xy = normalized centre, z = radius px (zero disables), w = feather px.
             uniform float4 exclusion;
+
+            // Apply downsampling only after all physical-space optical displacements.
+            half4 sampleBackdrop(float2 scenePoint) {
+                return backdrop.eval((scenePoint - backdropTransform.xy) * backdropTransform.z);
+            }
 
             half heightAt(float2 uv) {
                 float2 coordinate = clamp(uv, float2(0.0), float2(1.0)) * (gridSize - 1.0);
@@ -709,24 +721,24 @@ class LiquidGlassView @JvmOverloads constructor(
                 float2 sourceGreen = sceneOrigin + p + offsetGreen;
                 float2 sourceBlue = sceneOrigin + p + offsetBlue;
 
-                half4 base = backdrop.eval(sceneOrigin + p);
-                half4 b0 = backdrop.eval(sourceGreen);
+                half4 base = sampleBackdrop(sceneOrigin + p);
+                half4 b0 = sampleBackdrop(sourceGreen);
                 float edgeSharpness = 1.0 - rim * 0.78;
                 float materialBlur = blurRadius * mix(0.48, edgeSharpness, regularity) * (1.0 + frostiness * 3.8);
                 half3 blurred = b0.rgb;
                 if (materialBlur > 0.0) {
-                    half4 b1 = backdrop.eval(sourceGreen + float2(materialBlur, 0.0));
-                    half4 b2 = backdrop.eval(sourceGreen - float2(materialBlur, 0.0));
-                    half4 b3 = backdrop.eval(sourceGreen + float2(0.0, materialBlur));
-                    half4 b4 = backdrop.eval(sourceGreen - float2(0.0, materialBlur));
+                    half4 b1 = sampleBackdrop(sourceGreen + float2(materialBlur, 0.0));
+                    half4 b2 = sampleBackdrop(sourceGreen - float2(materialBlur, 0.0));
+                    half4 b3 = sampleBackdrop(sourceGreen + float2(0.0, materialBlur));
+                    half4 b4 = sampleBackdrop(sourceGreen - float2(0.0, materialBlur));
                     blurred = (b0.rgb * 2.0 + b1.rgb + b2.rgb + b3.rgb + b4.rgb) / 6.0;
                 }
 
                 half red = b0.r;
                 half blue = b0.b;
                 if (dispersion > 0.0) {
-                    red = backdrop.eval(sourceRed).r;
-                    blue = backdrop.eval(sourceBlue).b;
+                    red = sampleBackdrop(sourceRed).r;
+                    blue = sampleBackdrop(sourceBlue).b;
                 }
                 half3 refracted = half3(red, blurred.g, blue);
                 float interiorTransmission = (1.0 - rim) * mix(0.18, 0.08, regularity);
@@ -736,7 +748,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 float f0 = pow((indexOfRefraction - 1.0) / (indexOfRefraction + 1.0), 2.0);
                 float fresnel = f0 + (1.0 - f0) * pow(1.0 - abs(surfaceNormal.z), 5.0);
                 float2 reflectionDirection = normalize(surfaceSlope + boundaryNormal * 0.001);
-                half3 internalReflection = backdrop.eval(
+                half3 internalReflection = sampleBackdrop(
                     sceneOrigin + p - reflectionDirection * zRadius * mix(0.32, 0.46, regularity)
                 ).rgb;
                 refracted = mix(

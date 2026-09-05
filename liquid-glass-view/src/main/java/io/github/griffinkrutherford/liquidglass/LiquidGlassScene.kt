@@ -4,7 +4,6 @@ import android.annotation.TargetApi
 import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.PorterDuff
 import android.graphics.Rect
@@ -33,7 +32,7 @@ class LiquidGlassScene @JvmOverloads constructor(
     /** Set false when an external layout engine such as React Native Yoga positions children. */
     var managesChildLayout: Boolean = true
     private val glassViews = ArrayList<LiquidGlassView>(2)
-    private var backdrop: Bitmap? = null
+    private var backdrop: SceneBackdrop? = null
     private var backdropCanvas: Canvas? = null
     private var backdropDirty = true
     private var deliveringBackdrop = false
@@ -162,12 +161,19 @@ class LiquidGlassScene @JvmOverloads constructor(
         if (shouldCapture()) {
             ensureBackdrop()
             val capture = backdropCanvas
-            val bitmap = backdrop
-            if (capture != null && bitmap != null && !bitmap.isRecycled) {
+            val frame = backdrop
+            if (capture != null && frame != null && !frame.bitmap.isRecycled) {
                 if (backdropDirty) {
-                    captureBackdrop(capture)
+                    // Clear before drawing so an invalidation raised during capture survives.
                     backdropDirty = false
-                    deliverBackdrop(bitmap)
+                    try {
+                        capture.drawColor(0, PorterDuff.Mode.CLEAR)
+                        frame.draw(capture, ::captureBackdrop)
+                    } catch (failure: Throwable) {
+                        backdropDirty = true
+                        throw failure
+                    }
+                    deliverBackdrop(frame)
                 }
             }
         }
@@ -182,7 +188,6 @@ class LiquidGlassScene @JvmOverloads constructor(
             glassViews[index].setSuppressedForCapture(true)
         }
         try {
-            capture.drawColor(0, PorterDuff.Mode.CLEAR)
             background?.let {
                 it.setBounds(0, 0, width, height)
                 it.draw(capture)
@@ -203,11 +208,11 @@ class LiquidGlassScene @JvmOverloads constructor(
         }
     }
 
-    private fun deliverBackdrop(bitmap: Bitmap) {
+    private fun deliverBackdrop(frame: SceneBackdrop) {
         deliveringBackdrop = true
         try {
             for (index in glassViews.indices) {
-                glassViews[index].setSceneBackdrop(bitmap)
+                glassViews[index].setSceneBackdrop(frame)
             }
         } finally {
             deliveringBackdrop = false
@@ -216,11 +221,13 @@ class LiquidGlassScene @JvmOverloads constructor(
 
     private fun ensureBackdrop() {
         val current = backdrop
-        if (current != null && !current.isRecycled && current.width == width && current.height == height) return
+        if (current != null && !current.bitmap.isRecycled &&
+            current.geometry.width == width && current.geometry.height == height
+        ) return
         releaseBackdrop()
-        val created = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val created = SceneBackdrop.create(BackdropGeometry(width, height))
         backdrop = created
-        backdropCanvas = Canvas(created)
+        backdropCanvas = Canvas(created.bitmap)
         backdropDirty = true
     }
 
@@ -229,7 +236,7 @@ class LiquidGlassScene @JvmOverloads constructor(
             glassViews[index].clearSceneBackdrop()
         }
         backdropCanvas = null
-        backdrop?.recycle()
+        backdrop?.bitmap?.recycle()
         backdrop = null
         backdropDirty = true
     }

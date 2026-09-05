@@ -145,6 +145,8 @@ VIEW_DIR="liquid-glass-view/src/main/java/io/github/griffinkrutherford/liquidgla
 require_file liquid-glass-view/src/main/AndroidManifest.xml
 require_file "$VIEW_DIR/LiquidGlassView.kt"
 require_file "$VIEW_DIR/LiquidGlassScene.kt"
+require_file "$VIEW_DIR/BackdropGeometry.kt"
+require_file "$VIEW_DIR/SceneBackdrop.kt"
 require_file "$VIEW_DIR/LiquidGlassStyle.kt"
 CORE_DIR="liquid-glass-core/src/main/kotlin/com/griffinkrutherford/liquidglass/core"
 require_file "$CORE_DIR/LiquidMembrane.kt"
