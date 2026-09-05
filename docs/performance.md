@@ -10,18 +10,27 @@ when, which is what you need to reason about cost; the numbers come after
 Two independent pieces of work run per glass screen.
 
 **Backdrop capture**, once per scene. `LiquidGlassScene` owns one
-`ARGB_8888` bitmap the size of the scene, and redraws every visible non-glass
-child into it. This is the expensive one, and it scales with the scene's pixel
-area, not with the number of glass views.
+`ARGB_8888` bitmap at half the scene's physical width and height, rounding each
+nonempty dimension up. It redraws visible non-glass children into that bitmap
+when dirty. Bitmap storage is approximately one quarter of full resolution;
+view traversal and frame time do not necessarily fall by the same factor.
+
+Half-resolution capture is a visual quality trade: text and thin lines behind
+glass may soften or alias. Refraction, blur, exclusion, and reflection distances
+remain in physical scene pixels. A common sampling helper converts the final
+positions to texture coordinates. There is no runtime quality flag. Physical-device
+visual and performance validation is pending; see the
+[capture validation handoff](capture-validation.md).
 
 **Shader evaluation**, once per glass view per frame it draws. The AGSL shader
-runs per pixel of the glass surface and makes roughly eight backdrop samples per
-pixel: one base, five for the blur cross, and one each for the red and blue
-dispersion offsets. This scales with the glass surface's pixel area.
+runs per pixel of the glass surface and makes up to nine backdrop samples per
+pixel: one base, five for the blur cross, one each for the red and blue
+dispersion offsets, and one internal-reflection sample. This scales with the glass surface's pixel area.
 
-Alongside those, each glass view runs a fixed-timestep membrane simulation on a
-25×25 grid and uploads it as a 25×25 bitmap. The grid is fixed and small; it
-does not scale with the view.
+After interaction, each glass view runs a fixed-timestep membrane simulation on
+a 25×25 grid and updates its texture after simulation steps. Untouched views use
+a shader with no physics texture allocation or sampling. The grid does not scale
+with the view.
 
 ## When work is scheduled
 
@@ -110,8 +119,9 @@ shader cost: each one shades its own pixels, and neither can see the other.
 
 ### Large scenes
 
-The backdrop bitmap is `ARGB_8888` at the scene's full size in device pixels, so
-its cost grows with screen density as well as with layout size. A scene that
+The backdrop bitmap is `ARGB_8888` at `ceil(width / 2) × ceil(height / 2)`,
+where width and height are physical scene pixels. Its cost still grows with
+screen density as well as with layout size. A scene that
 only needs to cover the top of a screen should be sized to the top of the
 screen, not to the whole screen.
 

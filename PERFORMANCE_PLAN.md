@@ -2,12 +2,14 @@
 
 ## Objective and evidence standard
 
-Reduce the cost of rendered frames while preserving default rendering quality.
+Reduce the cost of rendered frames. Preserve rendering quality for arithmetic
+and scheduling changes; identify explicitly authorized quality trades separately.
 Separate eliminated source work from measured CPU/GPU improvement: a driver may
 already eliminate repeated expressions, and an emulator does not establish
 physical-device frame rate or power consumption.
 
-This document was re-audited on 2026-09-04 against the implementation. It replaces
+This document was re-audited on 2026-09-04 and updated on 2026-09-05 for the
+half-resolution capture candidate. It replaces
 the earlier speculative estimates and unconditional claims of losslessness.
 
 ## Implemented
@@ -20,6 +22,12 @@ the earlier speculative estimates and unconditional claims of losslessness.
   the existing simulation tolerance, not a claim of exact zero displacement.
 - **Backdrop reuse:** each scene shares one capture across its glass views and
   recaptures when dirty. The bitmap is reused at unchanged dimensions.
+- **Half-resolution capture candidate (2026-09-05):** captures use
+  `ceil(width / 2) × ceil(height / 2)` texture pixels, with density conversion
+  disabled and immutable origin/scale metadata published with each bitmap.
+  All nine backdrop reads map physical sample coordinates through one helper.
+  This is an explicitly requested quality trade, awaiting physical-device visual
+  acceptance and measurement; see [the validation handoff](docs/capture-validation.md).
 - **Physics cadence:** the default fixed timestep is 60 Hz, independent of display
   refresh rate. Normal-map pixels are updated after simulation steps.
 - **Dormant physics variant:** until the first impulse, views use a shader without
@@ -51,8 +59,9 @@ The refraction helper still runs for three wavelengths. There are two `pow`
 expressions, including the uniform-only Fresnel base reflectance.
 
 Backdrop capture still rasterizes the non-glass hierarchy into a full-scene
-software canvas. ARGB_8888 storage is approximately width × height × 4 bytes:
-1440 × 2400 is 13.8 MB (13.2 MiB), excluding overhead. Allocation occurs on initial
+software canvas, now scaled by one half. ARGB_8888 storage is
+`ceil(width / 2) × ceil(height / 2) × 4` bytes: a 1440 × 2400 scene needs
+3.46 MB (3.30 MiB), excluding overhead, versus 13.8 MB (13.2 MiB) at full resolution. Allocation occurs on initial
 capture or resize, not on every dirty frame. Rasterization and clearing recur on
 dirty frames. Both CPU capture and GPU shading need independent measurement.
 
@@ -141,9 +150,10 @@ a drop-in bitmap shader input. Keep the current path as a comparison baseline.
   rounding preserves pixels, especially after multiple operations.
 
 Adaptive resolution, skipped captures, smaller grids, and simplified optical
-models remain explicit quality/performance trades, disabled by default.
+models remain deferred quality/performance trades. The fixed half-resolution
+capture candidate above is the explicitly authorized exception.
 
-## Validation for this round
+## Validation for the September 4 round
 
 - 196 JavaScript tests, TypeScript checks, package build, and Fabric codegen passed.
 - Core JVM tests and debug/release Android view unit tests passed. New runner tests
