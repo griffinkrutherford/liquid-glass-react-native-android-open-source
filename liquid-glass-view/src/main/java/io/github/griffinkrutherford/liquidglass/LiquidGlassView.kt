@@ -750,7 +750,7 @@ class LiquidGlassView @JvmOverloads constructor(
                 float2 boundaryNormal = edgeNormal(p);
                 float opticalHeight;
                 float2 bevelSlope;
-                if (insideDistance >= zRadius + 1.5) {
+                if (insideDistance >= zRadius + 2.0) {
                     opticalHeight = zRadius;
                     bevelSlope = float2(0.0);
                 } else {

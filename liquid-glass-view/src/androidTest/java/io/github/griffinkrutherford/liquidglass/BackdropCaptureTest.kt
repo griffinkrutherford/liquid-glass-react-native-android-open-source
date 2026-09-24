@@ -220,6 +220,106 @@ class BackdropCaptureTest {
         }
     }
 
+    @Test fun glassContentInvalidationThroughWrapperDoesNotRecapture() = onMain {
+        val scene = LiquidGlassScene(instrumentation.targetContext).apply {
+            managesChildLayout = false
+            setBackgroundColor(Color.RED)
+        }
+        val wrapper = FrameLayout(instrumentation.targetContext)
+        val glass = LiquidGlassView(instrumentation.targetContext)
+        val innerGroup = FrameLayout(instrumentation.targetContext)
+        val content = View(instrumentation.targetContext)
+        innerGroup.addView(content, ViewGroup.LayoutParams(20, 20))
+        glass.addView(innerGroup, ViewGroup.LayoutParams(20, 20))
+        wrapper.addView(glass, ViewGroup.LayoutParams(30, 30))
+        scene.addView(wrapper, ViewGroup.LayoutParams(40, 40))
+        scene.registerGlassView(glass)
+        scene.layout(0, 0, 40, 40)
+        wrapper.layout(0, 0, 40, 40)
+        glass.layout(0, 0, 30, 30)
+        innerGroup.layout(0, 0, 20, 20)
+        content.layout(0, 0, 20, 20)
+        val output = Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888)
+        try {
+            scene.draw(Canvas(output))
+            val frame = backdrop(scene)!!
+            val generation = frame.bitmap.generationId
+            scene.onDescendantInvalidated(wrapper, content)
+            scene.draw(Canvas(output))
+            assertEquals(generation, frame.bitmap.generationId)
+
+            scene.onDescendantInvalidated(wrapper, wrapper)
+            scene.draw(Canvas(output))
+            assertNotEquals(generation, frame.bitmap.generationId)
+        } finally {
+            scene.unregisterGlassView(glass)
+            output.recycle()
+        }
+    }
+
+    @Test fun directGlassContentInvalidationDoesNotRecapture() = onMain {
+        val context = instrumentation.targetContext
+        val scene = LiquidGlassScene(context).apply {
+            managesChildLayout = false
+            setBackgroundColor(Color.RED)
+        }
+        val glass = LiquidGlassView(context)
+        val content = View(context)
+        glass.addView(content, ViewGroup.LayoutParams(20, 20))
+        scene.addView(glass, ViewGroup.LayoutParams(30, 30))
+        scene.registerGlassView(glass)
+        scene.layout(0, 0, 40, 40)
+        glass.layout(0, 0, 30, 30)
+        content.layout(0, 0, 20, 20)
+        val output = Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888)
+        try {
+            scene.draw(Canvas(output))
+            val frame = backdrop(scene)!!
+            val generation = frame.bitmap.generationId
+            scene.onDescendantInvalidated(glass, content)
+            scene.draw(Canvas(output))
+            assertEquals(generation, frame.bitmap.generationId)
+        } finally {
+            scene.unregisterGlassView(glass)
+            output.recycle()
+        }
+    }
+
+    @Test fun innerSceneGlassInvalidationRecapturesOuterScene() = onMain {
+        val context = instrumentation.targetContext
+        val outer = LiquidGlassScene(context).apply { managesChildLayout = false }
+        val inner = LiquidGlassScene(context).apply {
+            managesChildLayout = false
+            setBackgroundColor(Color.RED)
+        }
+        val innerGlass = LiquidGlassView(context)
+        val content = View(context)
+        innerGlass.addView(content, ViewGroup.LayoutParams(20, 20))
+        inner.addView(innerGlass, ViewGroup.LayoutParams(30, 30))
+        outer.addView(inner, ViewGroup.LayoutParams(40, 40))
+        inner.registerGlassView(innerGlass)
+        val outerGlass = LiquidGlassView(context)
+        outer.registerGlassView(outerGlass)
+        outer.layout(0, 0, 40, 40)
+        inner.layout(0, 0, 40, 40)
+        innerGlass.layout(0, 0, 30, 30)
+        content.layout(0, 0, 20, 20)
+        val output = Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888)
+        try {
+            outer.draw(Canvas(output))
+            val frame = backdrop(outer)!!
+            assertNotEquals(Color.RED, frame.bitmap.getPixel(5, 5))
+            val generation = frame.bitmap.generationId
+            outer.onDescendantInvalidated(inner, content)
+            outer.draw(Canvas(output))
+            assertNotEquals(generation, frame.bitmap.generationId)
+        } finally {
+            outer.unregisterGlassView(outerGlass)
+            inner.unregisterGlassView(innerGlass)
+            output.recycle()
+        }
+    }
+
     /** Isolated GPU readback for tests only; production capture remains a software canvas. */
     private fun render(view: View): Bitmap {
         val node = RenderNode("backdrop mapping pixels").apply { setPosition(0, 0, view.width, view.height) }
