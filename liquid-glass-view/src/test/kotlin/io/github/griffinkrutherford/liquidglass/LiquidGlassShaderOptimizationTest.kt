@@ -92,7 +92,7 @@ class LiquidGlassShaderOptimizationTest {
             ),
         )
 
-        assertTrue(source.contains("if (backdropInputBitmap !== backdrop)"))
+        assertTrue(source.contains("if (backdrop != null && backdropInputBitmap !== backdrop)"))
         assertTrue(source.contains("if (shaderUniformsDirty)"))
         assertTrue(source.contains("shaderUniformsDirty = false"))
         assertTrue(source.contains("shader.setFloatUniform(\"sceneOrigin\""))
@@ -103,7 +103,7 @@ class LiquidGlassShaderOptimizationTest {
     fun `every backdrop lookup uses the physical to texture mapping`() {
         assertEquals(1, Regex("backdrop\\.eval").findAll(shaderSource).count())
         assertTrue(shaderSource.contains("backdrop.eval((scenePoint - backdropTransform.xy) * backdropTransform.z)"))
-        val main = shaderSource.substringAfter("half4 main(float2 p)")
+        val main = shaderSource.substringAfter("half4 main(float2 rawP)")
         assertEquals(9, Regex("sampleBackdrop\\(").findAll(main).count())
         assertTrue(shaderSource.contains("return heightMap.eval(coordinate).r;"))
     }

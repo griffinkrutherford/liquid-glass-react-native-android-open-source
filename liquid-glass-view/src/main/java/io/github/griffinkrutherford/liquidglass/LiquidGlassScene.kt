@@ -7,8 +7,10 @@ import android.content.res.Configuration
 import android.graphics.Canvas
 import android.graphics.PorterDuff
 import android.graphics.Rect
+import android.graphics.RenderNode
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.Trace
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
@@ -31,9 +33,20 @@ class LiquidGlassScene @JvmOverloads constructor(
 ) : ViewGroup(context, attrs) {
     /** Set false when an external layout engine such as React Native Yoga positions children. */
     var managesChildLayout: Boolean = true
+    /** Experimental GPU capture path. The bitmap path remains the default. */
+    var useRenderNodeBackdrop: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            releaseBackdrop()
+            markBackdropDirty()
+        }
     private val glassViews = ArrayList<LiquidGlassView>(2)
     private var backdrop: SceneBackdrop? = null
     private var backdropCanvas: Canvas? = null
+    private var backdropNode: RenderNode? = null
+    private var nodeWidth = 0
+    private var nodeHeight = 0
     private var backdropDirty = true
     private var deliveringBackdrop = false
     private val memoryCallbacks = object : ComponentCallbacks2 {
@@ -92,6 +105,7 @@ class LiquidGlassScene @JvmOverloads constructor(
     internal fun unregisterGlassView(view: LiquidGlassView) {
         if (!glassViews.remove(view)) return
         view.clearSceneBackdrop()
+        view.clearSceneBackdropNode()
         if (glassViews.isEmpty()) releaseBackdrop()
     }
 
@@ -137,8 +151,18 @@ class LiquidGlassScene @JvmOverloads constructor(
     override fun onDescendantInvalidated(child: View, target: View) {
         super.onDescendantInvalidated(child, target)
         if (deliveringBackdrop) return
-        if (child is LiquidGlassView || target is LiquidGlassView) return
+        if (child is LiquidGlassView || isInsideGlass(target)) return
         markBackdropDirty()
+    }
+
+    private fun isInsideGlass(target: View): Boolean {
+        var current: View? = target
+        var passedGlass = false
+        while (current != null && current !== this) {
+            if (current is LiquidGlassView) passedGlass = true
+            current = current.parent as? View
+        }
+        return current === this && passedGlass
     }
 
     @Deprecated("Deprecated in Java")
@@ -159,6 +183,11 @@ class LiquidGlassScene @JvmOverloads constructor(
 
     override fun dispatchDraw(canvas: Canvas) {
         if (shouldCapture()) {
+            if (canvas.isHardwareAccelerated && useRenderNodeBackdrop) {
+                prepareRenderNodeBackdrop()
+                super.dispatchDraw(canvas)
+                return
+            }
             ensureBackdrop()
             val capture = backdropCanvas
             val frame = backdrop
@@ -167,8 +196,13 @@ class LiquidGlassScene @JvmOverloads constructor(
                     // Clear before drawing so an invalidation raised during capture survives.
                     backdropDirty = false
                     try {
-                        capture.drawColor(0, PorterDuff.Mode.CLEAR)
-                        frame.draw(capture, ::captureBackdrop)
+                        Trace.beginSection("LiquidGlass.captureBackdrop")
+                        try {
+                            capture.drawColor(0, PorterDuff.Mode.CLEAR)
+                            frame.draw(capture, ::captureBackdrop)
+                        } finally {
+                            Trace.endSection()
+                        }
                     } catch (failure: Throwable) {
                         backdropDirty = true
                         throw failure
@@ -183,9 +217,30 @@ class LiquidGlassScene @JvmOverloads constructor(
     private fun shouldCapture(): Boolean =
         Build.VERSION.SDK_INT >= 33 && glassViews.isNotEmpty() && width > 0 && height > 0
 
+    internal fun prepareRenderNodeBackdrop() {
+        if (!shouldCapture() || !useRenderNodeBackdrop) return
+        ensureBackdropNode()
+        val node = backdropNode ?: return
+        if (!backdropDirty) return
+        backdropDirty = false
+        Trace.beginSection("LiquidGlass.recordBackdropNode")
+        try {
+            val recording = node.beginRecording(width, height)
+            try { captureBackdrop(recording) }
+            finally { node.endRecording() }
+        } catch (failure: Throwable) {
+            backdropDirty = true
+            throw failure
+        } finally {
+            Trace.endSection()
+        }
+        deliverBackdropNode(node)
+    }
+
     private fun captureBackdrop(capture: Canvas) {
         for (index in glassViews.indices) {
             glassViews[index].setSuppressedForCapture(true)
+            if (capture.isHardwareAccelerated) glassViews[index].invalidate()
         }
         try {
             background?.let {
@@ -204,6 +259,7 @@ class LiquidGlassScene @JvmOverloads constructor(
         } finally {
             for (index in glassViews.indices) {
                 glassViews[index].setSuppressedForCapture(false)
+                if (capture.isHardwareAccelerated) glassViews[index].invalidate()
             }
         }
     }
@@ -217,6 +273,24 @@ class LiquidGlassScene @JvmOverloads constructor(
         } finally {
             deliveringBackdrop = false
         }
+    }
+
+    private fun deliverBackdropNode(node: RenderNode) {
+        deliveringBackdrop = true
+        try {
+            for (index in glassViews.indices) glassViews[index].setSceneBackdropNode(node)
+        } finally {
+            deliveringBackdrop = false
+        }
+    }
+
+    private fun ensureBackdropNode() {
+        if (backdropNode != null && nodeWidth == width && nodeHeight == height) return
+        backdropNode?.discardDisplayList()
+        backdropNode = RenderNode("LiquidGlass backdrop").apply { setPosition(0, 0, width, height) }
+        nodeWidth = width
+        nodeHeight = height
+        backdropDirty = true
     }
 
     private fun ensureBackdrop() {
@@ -234,7 +308,10 @@ class LiquidGlassScene @JvmOverloads constructor(
     private fun releaseBackdrop() {
         for (index in glassViews.indices) {
             glassViews[index].clearSceneBackdrop()
+            glassViews[index].clearSceneBackdropNode()
         }
+        backdropNode?.discardDisplayList()
+        backdropNode = null
         backdropCanvas = null
         backdrop?.bitmap?.recycle()
         backdrop = null

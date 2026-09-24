@@ -12,6 +12,9 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RenderEffect
+import android.graphics.RenderNode
 import android.graphics.RuntimeShader
 import android.graphics.Shader
 import android.os.Build
@@ -24,7 +27,9 @@ import android.view.animation.DecelerateInterpolator
 import com.griffinkrutherford.liquidglass.core.FixedTimestepRunner
 import com.griffinkrutherford.liquidglass.core.LiquidMembrane
 import com.griffinkrutherford.liquidglass.core.LiquidPhysicsConfig
+import com.griffinkrutherford.liquidglass.core.ShaderSampleBounds
 import kotlin.math.abs
+import kotlin.math.ceil
 
 /** A touch-reactive glass surface that refracts sibling content captured by [LiquidGlassScene]. */
 class LiquidGlassView @JvmOverloads constructor(
@@ -107,6 +112,10 @@ class LiquidGlassView @JvmOverloads constructor(
     private var normalBitmap: Bitmap? = null
     private var normalMapDirty = true
     private var sceneBackdrop: SceneBackdrop? = null
+    private var sceneBackdropNode: RenderNode? = null
+    private var glassEffectNode: RenderNode? = null
+    private var glassEffectNodeWidth = 0
+    private var glassEffectNodeHeight = 0
     private var scene: LiquidGlassScene? = null
     private var suppressedForCapture = false
     private var runtimeShader: RuntimeShader? = null
@@ -171,6 +180,17 @@ class LiquidGlassView @JvmOverloads constructor(
         sceneBackdrop = null
         backdropInput = null
         backdropInputBitmap = null
+    }
+
+    internal fun setSceneBackdropNode(node: RenderNode) {
+        sceneBackdropNode = node
+        invalidate()
+    }
+
+    internal fun clearSceneBackdropNode() {
+        sceneBackdropNode = null
+        glassEffectNode?.discardDisplayList()
+        glassEffectNode = null
     }
 
     /** Hides this view from the scene backdrop capture pass so glass never samples itself. */
@@ -277,8 +297,11 @@ class LiquidGlassView @JvmOverloads constructor(
 
         val backdrop = sceneBackdrop?.takeUnless { it.bitmap.isRecycled }
         val shader = if (Build.VERSION.SDK_INT >= 33) ensureRuntimeShader(membraneWasDisturbed) else null
-        if (shader != null && backdrop != null && canvas.isHardwareAccelerated) {
-            drawRuntimeGlass(canvas, shader, backdrop, membraneWasDisturbed)
+        val node = sceneBackdropNode
+        if (shader != null && node != null && canvas.isHardwareAccelerated) {
+            drawRuntimeGlass(canvas, shader, null, node, membraneWasDisturbed)
+        } else if (shader != null && backdrop != null && canvas.isHardwareAccelerated) {
+            drawRuntimeGlass(canvas, shader, backdrop, null, membraneWasDisturbed)
         } else {
             drawFallbackGlass(canvas)
         }
@@ -322,6 +345,8 @@ class LiquidGlassView @JvmOverloads constructor(
         heightInput = null
         runtimeShader = null
         runtimeShaderUsesPhysics = false
+        glassEffectNode?.discardDisplayList()
+        glassEffectNode = null
         normalBitmap?.recycle()
         normalBitmap = null
         normalMapDirty = true
@@ -331,11 +356,12 @@ class LiquidGlassView @JvmOverloads constructor(
     private fun drawRuntimeGlass(
         canvas: Canvas,
         shader: RuntimeShader,
-        frame: SceneBackdrop,
+        frame: SceneBackdrop?,
+        sourceNode: RenderNode?,
         usePhysics: Boolean,
     ) {
-        val backdrop = frame.bitmap
-        if (backdropInputBitmap !== backdrop) {
+        val backdrop = frame?.bitmap
+        if (backdrop != null && backdropInputBitmap !== backdrop) {
             backdropInputBitmap = backdrop
             backdropInput = filteredShader(backdrop)
             shader.setInputShader("backdrop", requireNotNull(backdropInput))
@@ -349,11 +375,22 @@ class LiquidGlassView @JvmOverloads constructor(
                 shader.setFloatUniform("gridSize", heightMap.width.toFloat(), heightMap.height.toFloat())
             }
         }
-        shader.setFloatUniform("sceneOrigin", sceneOriginX(), sceneOriginY())
-        if (shaderUniformsDirty) {
+        val originX = sceneOriginX()
+        val originY = sceneOriginY()
+        val padding = if (sourceNode != null) ceil(ShaderSampleBounds.maximumDistance(
+            width.toFloat(), height.toFloat(), refractionStrength, baseThickness, blurRadius,
+            frostiness, regularity, bevelDepth,
+        ) + 2f).toInt() else 0
+        shader.setFloatUniform("sceneOrigin", originX, originY)
+        shader.setFloatUniform("shaderOrigin", padding.toFloat(), padding.toFloat())
+        if (sourceNode != null) {
+            shader.setFloatUniform("backdropTransform", originX - padding, originY - padding, 1f)
+        } else if (frame != null) {
             shader.setFloatUniform(
                 "backdropTransform", frame.geometry.originX, frame.geometry.originY, frame.geometry.scale,
             )
+        }
+        if (shaderUniformsDirty) {
             shader.setFloatUniform("size", width.toFloat(), height.toFloat())
             shader.setFloatUniform("cornerRadius", cornerRadius)
             shader.setFloatUniform("refraction", refractionStrength)
@@ -384,9 +421,40 @@ class LiquidGlassView @JvmOverloads constructor(
             )
             shaderUniformsDirty = false
         }
-        paint.shader = shader
-        canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), cornerRadius, cornerRadius, paint)
-        paint.shader = null
+        if (sourceNode != null) {
+            val effectWidth = width + padding * 2
+            val effectHeight = height + padding * 2
+            if (glassEffectNode == null || glassEffectNodeWidth != effectWidth ||
+                glassEffectNodeHeight != effectHeight
+            ) {
+                glassEffectNode?.discardDisplayList()
+                glassEffectNode = RenderNode("LiquidGlass effect").apply {
+                    setPosition(0, 0, effectWidth, effectHeight)
+                }
+                glassEffectNodeWidth = effectWidth
+                glassEffectNodeHeight = effectHeight
+            }
+            val effectNode = requireNotNull(glassEffectNode)
+            effectNode.setRenderEffect(RenderEffect.createRuntimeShaderEffect(shader, "backdrop"))
+            val recording = effectNode.beginRecording(effectWidth, effectHeight)
+            try {
+                recording.translate(padding - originX, padding - originY)
+                recording.drawRenderNode(sourceNode)
+            } finally { effectNode.endRecording() }
+            val mask = Path().apply {
+                addRoundRect(0f, 0f, width.toFloat(), height.toFloat(), cornerRadius, cornerRadius, Path.Direction.CW)
+            }
+            val save = canvas.save()
+            try {
+                canvas.clipPath(mask)
+                canvas.translate(-padding.toFloat(), -padding.toFloat())
+                canvas.drawRenderNode(effectNode)
+            } finally { canvas.restoreToCount(save) }
+        } else {
+            paint.shader = shader
+            canvas.drawRoundRect(0f, 0f, width.toFloat(), height.toFloat(), cornerRadius, cornerRadius, paint)
+            paint.shader = null
+        }
     }
 
     private fun updateNormalMap(target: Bitmap) {
@@ -594,6 +662,7 @@ class LiquidGlassView @JvmOverloads constructor(
             uniform shader heightMap;
             uniform float2 size;
             uniform float2 sceneOrigin;
+            uniform float2 shaderOrigin;
             // xy = physical capture origin; z = scene-to-texture scale.
             uniform float3 backdropTransform;
             uniform float2 gridSize;
@@ -666,7 +735,8 @@ class LiquidGlassView @JvmOverloads constructor(
                 return result * min(1.0, limit / max(magnitude, 0.001));
             }
 
-            half4 main(float2 p) {
+            half4 main(float2 rawP) {
+                float2 p = rawP - shaderOrigin;
                 float2 uv = p / size;
                 float2 texel = 1.0 / max(gridSize - 1.0, float2(1.0));
                 float dx = float(heightAt(uv + float2(texel.x, 0.0)) - heightAt(uv - float2(texel.x, 0.0)));
@@ -678,12 +748,20 @@ class LiquidGlassView @JvmOverloads constructor(
                 float rimCoordinate = clamp(insideDistance / zRadius, 0.0, 1.0);
                 float rim = 1.0 - smoothstep(0.0, 1.0, rimCoordinate);
                 float2 boundaryNormal = edgeNormal(p);
-                float opticalHeight = bevelHeight(p, zRadius);
+                float opticalHeight;
+                float2 bevelSlope;
+                if (insideDistance >= zRadius + 1.5) {
+                    opticalHeight = zRadius;
+                    bevelSlope = float2(0.0);
+                } else {
+                    opticalHeight = bevelHeight(p, zRadius);
+                    bevelSlope = bevelGradient(p, zRadius);
+                }
                 float2 lensCoordinate = (p - size * 0.5) / max(size * 0.5, float2(1.0));
                 float lensDistance = clamp(length(lensCoordinate) * 0.7071, 0.0, 1.0);
                 float lensProfile = smoothstep(0.0, 1.0, lensDistance);
                 float2 broadLensSlope = lensCoordinate * mix(0.22, 0.32, regularity) * lensProfile;
-                float2 surfaceSlope = bevelGradient(p, zRadius) + broadLensSlope + physicsSlope;
+                float2 surfaceSlope = bevelSlope + broadLensSlope + physicsSlope;
                 float opticalGain = refraction / max(zRadius, 1.0) * mix(0.92, 0.72, regularity);
 
                 // All wavelengths and Fresnel reflection share the same surface geometry.
