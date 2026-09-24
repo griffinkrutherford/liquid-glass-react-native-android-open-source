@@ -9,6 +9,7 @@ import android.graphics.PorterDuff
 import android.graphics.Rect
 import android.graphics.drawable.Drawable
 import android.os.Build
+import android.os.Trace
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
@@ -137,8 +138,18 @@ class LiquidGlassScene @JvmOverloads constructor(
     override fun onDescendantInvalidated(child: View, target: View) {
         super.onDescendantInvalidated(child, target)
         if (deliveringBackdrop) return
-        if (child is LiquidGlassView || target is LiquidGlassView) return
+        if (child is LiquidGlassView || isInsideGlass(target)) return
         markBackdropDirty()
+    }
+
+    private fun isInsideGlass(target: View): Boolean {
+        var current: View? = target
+        var passedGlass = false
+        while (current != null && current !== this) {
+            if (current is LiquidGlassView) passedGlass = true
+            current = current.parent as? View
+        }
+        return current === this && passedGlass
     }
 
     @Deprecated("Deprecated in Java")
@@ -167,8 +178,13 @@ class LiquidGlassScene @JvmOverloads constructor(
                     // Clear before drawing so an invalidation raised during capture survives.
                     backdropDirty = false
                     try {
-                        capture.drawColor(0, PorterDuff.Mode.CLEAR)
-                        frame.draw(capture, ::captureBackdrop)
+                        Trace.beginSection("LiquidGlass.captureBackdrop")
+                        try {
+                            capture.drawColor(0, PorterDuff.Mode.CLEAR)
+                            frame.draw(capture, ::captureBackdrop)
+                        } finally {
+                            Trace.endSection()
+                        }
                     } catch (failure: Throwable) {
                         backdropDirty = true
                         throw failure

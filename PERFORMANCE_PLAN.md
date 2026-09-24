@@ -67,6 +67,29 @@ dirty frames. Both CPU capture and GPU shading need independent measurement.
 
 ## Measurement work before larger changes
 
+### 2026-09-23 emulator scroll trace
+
+The `flatListScroll` macrobenchmark ran for five iterations on an API 35 arm64
+emulator with the current capture and shader sources installed in the example app. The
+capture pass is bracketed by `LiquidGlass.captureBackdrop` in Perfetto. Capture
+P50 was 0.607–0.680 ms and P95 was 1.314–1.911 ms across iterations (137–146
+captures each). The benchmark's aggregate CPU frame P50 was 5.426 ms and P95
+was 9.987 ms. These figures include the inside-glass invalidation and interior
+bevel changes, so they are a path profile, not a before/after speedup. This
+emulator trace does not establish GPU shader time or physical-device results.
+
+The first benchmark invocation used the example app's older installed tarball;
+its trace lacked the capture marker. The figures above come from the rerun
+after syncing the current sources into that local package.
+
+The two changes designed to preserve output are implemented: descendant invalidations
+whose ancestor chain passes through a glass view no longer dirty the scene,
+and the shader skips bevel gradient evaluations in the flat interior. A
+connected test covers a glass view wrapped in another view. A RenderNode /
+RenderEffect prototype is isolated on `perf/rendernode-prototype`; standalone
+effect-input and nested-display-list probes passed, but integrated detached
+scene rendering has not passed pixel checks, so the bitmap path remains active.
+
 1. Add repeatable benchmark scenarios for a single card, multiple cards,
    scrolling content, drag interaction, and overlapping glass. Record dimensions,
    density, material, build variant, thermal state, and refresh rate.

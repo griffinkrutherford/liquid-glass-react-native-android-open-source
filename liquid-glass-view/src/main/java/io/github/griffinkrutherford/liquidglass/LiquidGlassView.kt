@@ -678,12 +678,20 @@ class LiquidGlassView @JvmOverloads constructor(
                 float rimCoordinate = clamp(insideDistance / zRadius, 0.0, 1.0);
                 float rim = 1.0 - smoothstep(0.0, 1.0, rimCoordinate);
                 float2 boundaryNormal = edgeNormal(p);
-                float opticalHeight = bevelHeight(p, zRadius);
+                float opticalHeight;
+                float2 bevelSlope;
+                if (insideDistance >= zRadius + 1.5) {
+                    opticalHeight = zRadius;
+                    bevelSlope = float2(0.0);
+                } else {
+                    opticalHeight = bevelHeight(p, zRadius);
+                    bevelSlope = bevelGradient(p, zRadius);
+                }
                 float2 lensCoordinate = (p - size * 0.5) / max(size * 0.5, float2(1.0));
                 float lensDistance = clamp(length(lensCoordinate) * 0.7071, 0.0, 1.0);
                 float lensProfile = smoothstep(0.0, 1.0, lensDistance);
                 float2 broadLensSlope = lensCoordinate * mix(0.22, 0.32, regularity) * lensProfile;
-                float2 surfaceSlope = bevelGradient(p, zRadius) + broadLensSlope + physicsSlope;
+                float2 surfaceSlope = bevelSlope + broadLensSlope + physicsSlope;
                 float opticalGain = refraction / max(zRadius, 1.0) * mix(0.92, 0.72, regularity);
 
                 // All wavelengths and Fresnel reflection share the same surface geometry.
