@@ -5,6 +5,10 @@ import android.content.res.ColorStateList
 import android.graphics.Color
 import android.os.Bundle
 import android.view.ViewGroup
+import android.widget.Button
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import io.github.griffinkrutherford.liquidglass.LiquidGlassEffect
@@ -28,7 +32,6 @@ class MainActivity : Activity() {
             label("Drag across the 3K photo, then tap to switch material", 14f, Color.argb(220, 255, 255, 255)),
             margins(23, 108),
         )
-        scene.addView(label("REFRACTION  •  REFLECTION  •  PHYSICS", 11f, Color.WHITE), margins(24, 742))
 
         val materialLabel = label("◇  Crystal", 20f, Color.WHITE)
         val card = LiquidGlassView(this).apply {
@@ -37,13 +40,13 @@ class MainActivity : Activity() {
             draggable = true
             cornerRadius = dp(34).toFloat()
             refractionStrength = dp(28).toFloat()
-            dispersion = dp(1.5f).toFloat()
+            dispersion = 1.5f
             indexOfRefraction = 1.50f
             bevelDepth = dp(27).toFloat()
             baseThickness = dp(8).toFloat()
             blurRadius = dp(2).toFloat()
             tintColor = Color.rgb(220, 242, 255)
-            tintAmount = 0.075f
+            tintAmount = 0.08f
             contentDescription = "Draggable liquid glass weather card"
 
             addView(label("SANUR, BALI", 14f, Color.WHITE), margins(22, 20))
@@ -68,32 +71,90 @@ class MainActivity : Activity() {
             topMargin = dp(278)
         })
 
+        val controls = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), 0, dp(24), dp(24))
+        }
+        val tintLabel = label("TINT  •  8%", 11f, Color.WHITE)
+        controls.addView(tintLabel, controlRow(0))
+        controls.addView(
+            controlSeekBar(
+                max = 100,
+                initialProgress = 8,
+                description = "Glass tint strength",
+            ) { progress ->
+                card.tintAmount = progress / 100f
+                tintLabel.text = "TINT  •  $progress%"
+            },
+            controlRow(4, 44),
+        )
+
+        val blurLabel = label("BLUR  •  2.0 DP", 11f, Color.WHITE)
+        controls.addView(blurLabel, controlRow(12))
+        controls.addView(
+            controlSeekBar(
+                max = 120,
+                initialProgress = 20,
+                description = "Glass blur radius",
+            ) { progress ->
+                val blur = progress / 10f
+                card.blurRadius = px(blur)
+                blurLabel.text = "BLUR  •  %.1f DP".format(blur)
+            },
+            controlRow(4, 44),
+        )
+
+        controls.addView(label("TINT COLOR", 11f, Color.WHITE), controlRow(12))
+        val tintColors = listOf(
+            "ICE" to Color.rgb(220, 242, 255),
+            "VIOLET" to Color.rgb(210, 190, 255),
+            "ROSE" to Color.rgb(255, 190, 210),
+            "MINT" to Color.rgb(180, 255, 220),
+        )
+        controls.addView(
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                tintColors.forEach { (name, color) ->
+                    addView(Button(this@MainActivity).apply {
+                        text = name
+                        textSize = 10f
+                        setTextColor(if (name == "ICE") Color.rgb(5, 18, 30) else Color.WHITE)
+                        backgroundTintList = ColorStateList.valueOf(color)
+                        contentDescription = "$name glass tint"
+                        setOnClickListener { card.tintColor = color }
+                    }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                }
+            },
+            controlRow(6, 42),
+        )
+
         val thicknessLabel = label("OPTICAL THICKNESS  •  8.0", 11f, Color.WHITE)
-        scene.addView(thicknessLabel, margins(24, 668))
+        controls.addView(thicknessLabel, controlRow(12))
+        controls.addView(
+            controlSeekBar(
+                max = 640,
+                initialProgress = 80,
+                description = "Glass optical thickness",
+            ) { progress ->
+                val thickness = progress / 10f
+                card.baseThickness = px(thickness)
+                thicknessLabel.text = "OPTICAL THICKNESS  •  %.1f".format(thickness)
+            },
+            controlRow(4, 44),
+        )
+        controls.addView(label("REFRACTION  •  REFLECTION  •  PHYSICS", 11f, Color.WHITE), controlRow(12))
         scene.addView(
-            SeekBar(this).apply {
-                max = 640
-                progress = 80
-                progressTintList = ColorStateList.valueOf(Color.rgb(174, 154, 255))
-                progressBackgroundTintList = ColorStateList.valueOf(Color.argb(105, 255, 255, 255))
-                thumbTintList = ColorStateList.valueOf(Color.rgb(174, 154, 255))
-                contentDescription = "Glass optical thickness"
-                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                    override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                        val thickness = progress / 10f
-                        card.baseThickness = dp(thickness).toFloat()
-                        thicknessLabel.text = "OPTICAL THICKNESS  •  %.1f".format(thickness)
-                    }
-
-                    override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
-
-                    override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
-                })
+            ScrollView(this).apply {
+                isVerticalScrollBarEnabled = false
+                addView(controls, FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ))
             },
-            ViewGroup.MarginLayoutParams(resources.displayMetrics.widthPixels - dp(48), dp(44)).apply {
-                leftMargin = dp(24)
-                topMargin = dp(687)
-            },
+            ViewGroup.MarginLayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
+            ).apply { topMargin = dp(510) },
         )
 
         setContentView(scene)
@@ -112,7 +173,32 @@ class MainActivity : Activity() {
             topMargin = dp(top)
         }
 
+    private fun controlSeekBar(
+        max: Int,
+        initialProgress: Int,
+        description: String,
+        onChanged: (Int) -> Unit,
+    ) = SeekBar(this).apply {
+        this.max = max
+        progress = initialProgress
+        progressTintList = ColorStateList.valueOf(Color.rgb(174, 154, 255))
+        progressBackgroundTintList = ColorStateList.valueOf(Color.argb(105, 255, 255, 255))
+        thumbTintList = ColorStateList.valueOf(Color.rgb(174, 154, 255))
+        contentDescription = description
+        setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) = onChanged(progress)
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) = Unit
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) = Unit
+        })
+    }
+
+    private fun controlRow(top: Int, height: Int? = null) =
+        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, height?.let(::dp)
+            ?: ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(top) }
+
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    private fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
+    private fun px(value: Float): Float = value * resources.displayMetrics.density
 }
