@@ -8,8 +8,8 @@ Separate eliminated source work from measured CPU/GPU improvement: a driver may
 already eliminate repeated expressions, and an emulator does not establish
 physical-device frame rate or power consumption.
 
-This document was re-audited on 2026-09-04 and updated on 2026-09-05 for the
-half-resolution capture candidate. It replaces
+This document was re-audited on 2026-09-04 and updated on 2026-09-23 for the
+emulator scroll trace and small fixes. It replaces
 the earlier speculative estimates and unconditional claims of losslessness.
 
 ## Implemented
@@ -22,6 +22,9 @@ the earlier speculative estimates and unconditional claims of losslessness.
   the existing simulation tolerance, not a claim of exact zero displacement.
 - **Backdrop reuse:** each scene shares one capture across its glass views and
   recaptures when dirty. The bitmap is reused at unchanged dimensions.
+- **Inside-glass invalidation:** descendant invalidations inside a glass view
+  do not dirty its scene's backdrop, including when the glass is wrapped in
+  another view. An outer scene still recaptures content inside an inner scene.
 - **Half-resolution capture candidate (2026-09-05):** captures use
   `ceil(width / 2) × ceil(height / 2)` texture pixels, with density conversion
   disabled and immutable origin/scale metadata published with each bitmap.
@@ -42,6 +45,9 @@ the earlier speculative estimates and unconditional claims of losslessness.
   displacement limit are computed once and passed to the refraction helper.
   This removes three repeated normalizations and two copies of the other
   expressions in shader source while retaining their arithmetic and precision.
+- **Flat bevel interior:** pixels at least 2 px beyond the bevel radius reuse
+  the constant optical height and zero bevel gradient. This skips five
+  rounded-box SDF evaluations in that region, subject to device image checks.
 - **Exact-zero sample shortcuts:** zero blur uses the center sample; zero
   dispersion reuses its red and blue channels.
 - **Exclusion local naming:** `exclusionMask` no longer shadows the uniform.
@@ -53,8 +59,10 @@ samples, red, blue, and internal reflection. The disturbed physics variant adds
 four height-map samples; the dormant variant adds none. Zero blur or dispersion
 can reduce those counts. These are source-level counts, not GPU measurements.
 
-There are ten rounded-box SDF evaluations: four for the boundary normal, four
-through the bevel gradient, one for optical height, and one for inside distance.
+There are ten rounded-box SDF evaluations near the bevel: four for the boundary
+normal, four through the bevel gradient, one for optical height, and one for
+inside distance. The flat interior branch uses five: four for the boundary
+normal and one for inside distance.
 The refraction helper still runs for three wavelengths. There are two `pow`
 expressions, including the uniform-only Fresnel base reflectance.
 
@@ -67,29 +75,6 @@ dirty frames. Both CPU capture and GPU shading need independent measurement.
 
 ## Measurement work before larger changes
 
-### 2026-09-23 emulator scroll trace
-
-The `flatListScroll` macrobenchmark ran for five iterations on an API 35 arm64
-emulator with the current capture and shader sources installed in the example app. The
-capture pass is bracketed by `LiquidGlass.captureBackdrop` in Perfetto. Capture
-P50 was 0.607–0.680 ms and P95 was 1.314–1.911 ms across iterations (137–146
-captures each). The benchmark's aggregate CPU frame P50 was 5.426 ms and P95
-was 9.987 ms. These figures include the inside-glass invalidation and interior
-bevel changes, so they are a path profile, not a before/after speedup. This
-emulator trace does not establish GPU shader time or physical-device results.
-
-The first benchmark invocation used the example app's older installed tarball;
-its trace lacked the capture marker. The figures above come from the rerun
-after syncing the current sources into that local package.
-
-The two changes designed to preserve output are implemented: descendant invalidations
-whose ancestor chain passes through a glass view no longer dirty the scene,
-and the shader skips bevel gradient evaluations in the flat interior. A
-connected test covers a glass view wrapped in another view. A RenderNode /
-RenderEffect prototype is isolated on `perf/rendernode-prototype`; standalone
-effect-input and nested-display-list probes passed, but integrated detached
-scene rendering has not passed pixel checks, so the bitmap path remains active.
-
 1. Add repeatable benchmark scenarios for a single card, multiple cards,
    scrolling content, drag interaction, and overlapping glass. Record dimensions,
    density, material, build variant, thermal state, and refresh rate.
@@ -101,6 +86,27 @@ scene rendering has not passed pixel checks, so the bitmap path remains active.
 4. Establish deterministic rendered-image comparisons across materials, light/dark
    appearance, corner sizes, exclusion masks, overlapping views, and fixed physics
    states. Test high-contrast edges as well as photographs.
+
+### 2026-09-23 emulator scroll trace
+
+The `flatListScroll` macrobenchmark ran for five iterations on an API 35 arm64
+emulator with the current capture and shader sources installed in the example
+app. The capture pass is bracketed by `LiquidGlass.captureBackdrop` in
+Perfetto. Capture P50 was 0.607–0.680 ms and P95 was 1.314–1.911 ms across
+iterations (137–146 captures each). The benchmark's aggregate CPU frame P50
+was 5.426 ms and P95 was 9.987 ms. These figures include the inside-glass
+invalidation and interior bevel changes, so they are a path profile, not a
+before/after speedup. This emulator trace does not establish GPU shader time
+or physical-device results.
+
+The first benchmark invocation used the example app's older installed tarball;
+its trace lacked the capture marker. The figures above come from the rerun
+after syncing the current sources into that local package.
+
+A RenderNode / RenderEffect prototype is isolated on
+`perf/rendernode-prototype`; standalone effect-input and nested-display-list
+probes passed, but integrated detached scene rendering has not passed pixel
+checks, so the bitmap path remains active.
 
 ## Next candidates
 

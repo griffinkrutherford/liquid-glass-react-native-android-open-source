@@ -138,7 +138,7 @@ class LiquidGlassScene @JvmOverloads constructor(
     override fun onDescendantInvalidated(child: View, target: View) {
         super.onDescendantInvalidated(child, target)
         if (deliveringBackdrop) return
-        if (child is LiquidGlassView || isInsideGlass(target)) return
+        if (isInsideGlass(target)) return
         markBackdropDirty()
     }
 
@@ -146,6 +146,8 @@ class LiquidGlassScene @JvmOverloads constructor(
         var current: View? = target
         var passedGlass = false
         while (current != null && current !== this) {
+            // An inner scene draws its own glass into this scene's backdrop.
+            if (current is LiquidGlassScene) return false
             if (current is LiquidGlassView) passedGlass = true
             current = current.parent as? View
         }
